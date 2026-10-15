@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Production builds
+dist/
+dist-ssr/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+!*.env.example
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# Caches
+.vite/
+*.tsbuildinfo
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

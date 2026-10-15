@@ -1,0 +1,42 @@
+services:
+  # ── Backend Web Service (Render Free) ───────────────────────
+  - type: web
+    name: starmedia-crm-api
+    runtime: node
+    plan: free
+    region: oregon # or ohio, frankfurt, singapore
+    buildCommand: npm install && npm run build -w server
+    startCommand: npm run start -w server
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false # Configure your MongoDB Atlas connection string in Render Dashboard
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRES
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES
+        value: 7d
+      - key: CLIENT_URL
+        sync: false # Set to your deployed Vercel frontend URL (e.g., https://starmedia-crm.vercel.app)
+      - key: API_URL
+        sync: false # Set to your deployed backend URL (e.g., https://starmedia-crm-api.onrender.com)
+      - key: ALLOWED_DOMAINS
+        value: starmediainfluencer.com
+      - key: MFA_ISSUER
+        value: STAR MEDIA CRM
+      - key: STORAGE_PROVIDER
+        value: local
+      - key: COMPANY_NAME
+        value: STAR MEDIA
+      - key: DEFAULT_CURRENCY
+        value: INR
+      - key: DEFAULT_TIMEZONE
+        value: Asia/Kolkata
