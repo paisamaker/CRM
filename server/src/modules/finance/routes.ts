@@ -27,9 +27,16 @@ import { AppError, ForbiddenError, NotFoundError } from '../../utils/AppError.js
 import { writeAudit } from '../../utils/audit.js';
 import { sendEmail } from '../../utils/mailer.js';
 import { Client } from '../../models/Client.js';
+import { Bill } from '../../models/Bill.js';
+import { FinanceCategory, DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES } from '../../models/FinanceCategory.js';
+import categoryRoutes from './categoryRoutes.js';
+import billRoutes from './billRoutes.js';
+import salaryRoutes from './salaryRoutes.js';
 import {
   startOfDay,
   endOfDay,
+  startOfWeek,
+  endOfWeek,
   startOfMonth,
   endOfMonth,
   startOfYear,
@@ -38,10 +45,15 @@ import {
   addDays,
   format,
 } from 'date-fns';
-import { roundMoney } from '../../utils/money.js';
+import { roundMoney, addMoney, subMoney } from '../../utils/money.js';
 
 const router = Router();
 router.use(authenticate);
+
+// Mount modular finance sub-routers
+router.use('/categories', categoryRoutes);
+router.use('/bills', billRoutes);
+router.use('/salaries', salaryRoutes);
 
 function parseRange(from?: string, to?: string) {
   const end = to ? endOfDay(new Date(to)) : endOfDay(new Date());
@@ -49,30 +61,138 @@ function parseRange(from?: string, to?: string) {
   return { start, end };
 }
 
-// ── Transactions ────────────────────────────────────
+function getFinancePeriodRange(period?: string, from?: string, to?: string) {
+  const now = new Date();
+  if (from || to) {
+    const end = to ? endOfDay(new Date(to)) : endOfDay(now);
+    const start = from ? startOfDay(new Date(from)) : startOfDay(subMonths(end, 1));
+    return { start, end };
+  }
+  switch (period) {
+    case 'today':
+      return { start: startOfDay(now), end: endOfDay(now) };
+    case 'this_week':
+      return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
+    case 'this_month':
+      return { start: startOfMonth(now), end: endOfMonth(now) };
+    case 'this_year':
+      return { start: startOfYear(now), end: endOfYear(now) };
+    default:
+      return { start: startOfMonth(now), end: endOfMonth(now) };
+  }
+}
+
+// ── Transactions Export (CSV) ─────────────────────────
 router.get(
-  '/transactions',
-  authorize('transactions', 'read'),
+  '/transactions/export',
+  authorize('transactions', 'export'),
   asyncHandler(async (req, res) => {
-    if (req.user!.role === 'employee' && req.query.mine !== '0') {
-      // employees see own expense claims
-    }
     const filter: Record<string, unknown> = {};
-    if (req.query.type) filter.type = req.query.type;
+    if (req.query.type) {
+      const t = String(req.query.type).toLowerCase();
+      filter.type = t === 'income' ? 'revenue' : t;
+    }
     if (req.query.status) filter.status = req.query.status;
     if (req.query.category) filter.category = req.query.category;
-    if (req.query.client) filter.client = req.query.client;
+    if (req.query.paymentMethod) filter.paymentMethod = req.query.paymentMethod;
     if (req.user!.role === 'employee' || req.user!.role === 'manager') filter.createdBy = req.user!.id;
     if (req.query.from || req.query.to) {
       const { start, end } = parseRange(String(req.query.from || ''), String(req.query.to || ''));
       filter.date = { $gte: start, $lte: end };
     }
-    const data = await paginate(Transaction, filter, req, ['client', 'vendor', 'project', 'createdBy']);
+
+    const txs = await Transaction.find(filter)
+      .sort({ date: -1, createdAt: -1 })
+      .populate('client', 'name company')
+      .populate('vendor', 'name')
+      .populate('employee', 'name email')
+      .populate('createdBy', 'name email')
+      .lean();
+
+    const rows = txs.map((t) => ({
+      Date: format(new Date(t.date), 'yyyy-MM-dd'),
+      Type: t.type === 'revenue' ? 'Income' : 'Expense',
+      Category: t.category,
+      Title: t.title || '—',
+      Amount: t.amount,
+      Currency: t.currency || 'INR',
+      Status: t.status,
+      PaymentMethod: t.paymentMethod || '—',
+      Party:
+        (t.client as { name?: string; company?: string })?.company ||
+        (t.client as { name?: string })?.name ||
+        (t.vendor as { name?: string })?.name ||
+        (t.employee as { name?: string })?.name ||
+        '—',
+      CreatedBy: (t.createdBy as { name?: string })?.name || '—',
+      Notes: t.notes || '',
+    }));
+
+    const csv = stringify(rows, { header: true });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="transactions_${format(new Date(), 'yyyyMMdd_HHmm')}.csv"`
+    );
+    res.send(csv);
+  })
+);
+
+// ── Transactions Listing ────────────────────────────
+router.get(
+  '/transactions',
+  authorize('transactions', 'read'),
+  asyncHandler(async (req, res) => {
+    const filter: Record<string, unknown> = {};
+    if (req.query.type) {
+      const t = String(req.query.type).toLowerCase();
+      filter.type = t === 'income' ? 'revenue' : t;
+    }
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.category) filter.category = req.query.category;
+    if (req.query.paymentMethod) filter.paymentMethod = req.query.paymentMethod;
+    if (req.query.client) filter.client = req.query.client;
+    if (req.user!.role === 'employee' || req.user!.role === 'manager') filter.createdBy = req.user!.id;
+
+    if (req.query.search) {
+      const q = String(req.query.search).trim();
+      filter.$or = [
+        { title: { $regex: q, $options: 'i' } },
+        { description: { $regex: q, $options: 'i' } },
+        { notes: { $regex: q, $options: 'i' } },
+        { category: { $regex: q, $options: 'i' } },
+        { paymentMethod: { $regex: q, $options: 'i' } },
+      ];
+    }
+
+    if (req.query.from || req.query.to) {
+      const { start, end } = parseRange(String(req.query.from || ''), String(req.query.to || ''));
+      filter.date = { $gte: start, $lte: end };
+    }
+
+    const data = await paginate(Transaction, filter, req, [
+      'client',
+      'vendor',
+      'employee',
+      'project',
+      'bill',
+      'bankAccount',
+      'createdBy',
+    ]);
+
+    // Fetch dynamic categories from DB
+    const dbCategories = await FinanceCategory.find({ isActive: true }).select('name type').lean();
+    const dynamicIncome = dbCategories.filter((c) => c.type === 'income').map((c) => c.name);
+    const dynamicExpense = dbCategories.filter((c) => c.type === 'expense').map((c) => c.name);
+
     res.json({
       success: true,
       data: {
         ...data,
-        categories: { expense: EXPENSE_CATEGORIES, revenue: REVENUE_CATEGORIES },
+        categories: {
+          expense: Array.from(new Set([...DEFAULT_EXPENSE_CATEGORIES, ...dynamicExpense, ...EXPENSE_CATEGORIES])),
+          revenue: Array.from(new Set([...DEFAULT_INCOME_CATEGORIES, ...dynamicIncome, ...REVENUE_CATEGORIES])),
+        },
         billTypes: MANAGER_EXPENSE_BILL_TYPES,
       },
     });
@@ -104,25 +224,49 @@ router.post(
     const body = z
       .object({
         type: z.enum(['revenue', 'expense']),
-        category: z.string(),
+        category: z.string().trim(),
         amount: z.number().positive(),
+        taxAmount: z.number().min(0).optional(),
         currency: z.string().optional(),
         date: z.coerce.date(),
         client: z.string().optional(),
         vendor: z.string().optional(),
+        employee: z.string().optional(),
         project: z.string().optional(),
         paymentMethod: z.string().optional(),
+        bankAccountId: z.string().optional(),
         notes: z.string().optional(),
         title: z.string().optional(),
+        description: z.string().optional(),
         receipt: z.object({ name: z.string(), url: z.string() }).optional(),
+        attachment: z.object({ name: z.string(), url: z.string(), mime: z.string().optional(), size: z.number().optional() }).optional(),
         submitForApproval: z.boolean().optional(),
       })
       .parse(req.body);
 
     if (body.type === 'revenue' && !canCreate) throw new ForbiddenError('Only finance/CEO can log revenue');
 
-    if (body.type === 'expense' && !(EXPENSE_CATEGORIES as readonly string[]).includes(body.category)) {
-      throw new AppError('Invalid expense category', 400);
+    // Check if category is valid (defaults or custom in DB)
+    if (body.type === 'expense') {
+      const isKnown =
+        (EXPENSE_CATEGORIES as readonly string[]).includes(body.category) ||
+        (DEFAULT_EXPENSE_CATEGORIES as readonly string[]).includes(body.category as (typeof DEFAULT_EXPENSE_CATEGORIES)[number]);
+      if (!isKnown) {
+        const found = await FinanceCategory.findOne({ name: body.category, type: 'expense', isActive: true });
+        if (!found && ['ceo', 'finance'].includes(req.user!.role)) {
+          await FinanceCategory.create({ name: body.category, type: 'expense', isActive: true, createdBy: req.user!.id }).catch(() => null);
+        }
+      }
+    } else if (body.type === 'revenue') {
+      const isKnown =
+        (REVENUE_CATEGORIES as readonly string[]).includes(body.category) ||
+        (DEFAULT_INCOME_CATEGORIES as readonly string[]).includes(body.category as (typeof DEFAULT_INCOME_CATEGORIES)[number]);
+      if (!isKnown) {
+        const found = await FinanceCategory.findOne({ name: body.category, type: 'income', isActive: true });
+        if (!found && ['ceo', 'finance'].includes(req.user!.role)) {
+          await FinanceCategory.create({ name: body.category, type: 'income', isActive: true, createdBy: req.user!.id }).catch(() => null);
+        }
+      }
     }
 
     if (body.category === 'Custom Bill' && !body.title?.trim() && !body.notes?.trim()) {
@@ -158,14 +302,34 @@ router.post(
       .filter(Boolean)
       .join('\n') || undefined;
 
-    const { title: _title, submitForApproval: _submit, ...txFields } = body;
+    const { title: _title, submitForApproval: _submit, bankAccountId, ...txFields } = body;
     const tx = await Transaction.create({
       ...txFields,
+      title: body.title?.trim() || billTitle,
+      description: body.description?.trim(),
       notes,
       amount: roundMoney(body.amount),
+      taxAmount: body.taxAmount ? roundMoney(body.taxAmount) : 0,
+      bankAccount: bankAccountId || undefined,
+      employee: body.employee || undefined,
+      attachment: body.attachment || (body.receipt ? { name: body.receipt.name, url: body.receipt.url } : undefined),
       status,
       createdBy: req.user!.id,
     });
+
+    if (status === 'approved') {
+      const bank = bankAccountId
+        ? await BankAccount.findById(bankAccountId)
+        : await BankAccount.findOne({ isPrimary: true, status: 'active' });
+      if (bank) {
+        if (body.type === 'revenue') {
+          bank.balance = addMoney(bank.balance, tx.amount);
+        } else {
+          bank.balance = subMoney(bank.balance, tx.amount);
+        }
+        await bank.save();
+      }
+    }
 
     if (status === 'pending') {
       const approval = await Approval.create({
@@ -1511,6 +1675,271 @@ router.get(
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="pnl-export.csv"');
     res.send(csv);
+  })
+);
+
+// ── Centralized Finance Dashboard Summary ────────────
+router.get(
+  '/dashboard-summary',
+  authorize('finance_overview', 'read'),
+  asyncHandler(async (req, res) => {
+    const period = String(req.query.period || 'this_month');
+    const { start, end } = getFinancePeriodRange(
+      period,
+      req.query.from ? String(req.query.from) : undefined,
+      req.query.to ? String(req.query.to) : undefined
+    );
+
+    // 1. In-period Income (approved/paid revenue transactions)
+    const incomeAgg = await Transaction.aggregate([
+      { $match: { type: 'revenue', status: { $in: ['approved', 'paid'] }, date: { $gte: start, $lte: end } } },
+      { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+    ]);
+    const totalIncome = incomeAgg[0]?.total || 0;
+    const incomeCount = incomeAgg[0]?.count || 0;
+
+    // 2. In-period Expenses (approved/paid expense transactions, includes paid salary & paid bills)
+    const expenseAgg = await Transaction.aggregate([
+      { $match: { type: 'expense', status: { $in: ['approved', 'paid'] }, date: { $gte: start, $lte: end } } },
+      { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+    ]);
+    const totalExpenses = expenseAgg[0]?.total || 0;
+    const expenseCount = expenseAgg[0]?.count || 0;
+
+    // 3. Net Profit / Loss
+    const netProfit = roundMoney(totalIncome - totalExpenses);
+
+    // 4. Available Balance = Total Opening Balance + All-time Income - All-time Expenses
+    const [allTimeIncomeAgg, allTimeExpenseAgg, bankAccounts] = await Promise.all([
+      Transaction.aggregate([
+        { $match: { type: 'revenue', status: { $in: ['approved', 'paid'] } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      Transaction.aggregate([
+        { $match: { type: 'expense', status: { $in: ['approved', 'paid'] } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      BankAccount.find({ status: 'active' }).lean(),
+    ]);
+
+    const allTimeIncome = allTimeIncomeAgg[0]?.total || 0;
+    const allTimeExpense = allTimeExpenseAgg[0]?.total || 0;
+    const totalOpeningBalance = bankAccounts.reduce((acc, b) => acc + (b.openingBalance || 0), 0);
+    const availableBalance = roundMoney(totalOpeningBalance + allTimeIncome - allTimeExpense);
+
+    // 5. Total Salary Paid (in period) & Pending Salary (all outstanding)
+    const [salaryPaidAgg, salaryPendingAgg] = await Promise.all([
+      Payroll.aggregate([
+        { $match: { status: 'disbursed', paidOn: { $gte: start, $lte: end } } },
+        { $group: { _id: null, total: { $sum: '$net' }, count: { $sum: 1 } } },
+      ]),
+      Payroll.aggregate([
+        { $match: { status: { $in: ['draft', 'pending_approval', 'approved'] } } },
+        { $group: { _id: null, total: { $sum: '$net' }, count: { $sum: 1 } } },
+      ]),
+    ]);
+    const salaryPaid = salaryPaidAgg[0]?.total || 0;
+    const salaryPaidCount = salaryPaidAgg[0]?.count || 0;
+    const salaryPending = salaryPendingAgg[0]?.total || 0;
+    const salaryPendingCount = salaryPendingAgg[0]?.count || 0;
+
+    // 6. Pending Payments & Liabilities
+    const [billsPayablePendingAgg, billsReceivablePendingAgg, invoicesPendingAgg] = await Promise.all([
+      Bill.aggregate([
+        { $match: { type: 'payable', paymentStatus: { $in: ['unpaid', 'partially_paid'] } } },
+        { $group: { _id: null, total: { $sum: '$outstandingAmount' }, count: { $sum: 1 } } },
+      ]),
+      Bill.aggregate([
+        { $match: { type: 'receivable', paymentStatus: { $in: ['unpaid', 'partially_paid'] } } },
+        { $group: { _id: null, total: { $sum: '$outstandingAmount' }, count: { $sum: 1 } } },
+      ]),
+      Invoice.aggregate([
+        { $match: { status: { $in: ['sent', 'partially_paid', 'overdue'] } } },
+        {
+          $project: {
+            outstanding: { $subtract: ['$total', '$paid'] },
+          },
+        },
+        { $group: { _id: null, total: { $sum: '$outstanding' }, count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const pendingBillsPayable = billsPayablePendingAgg[0]?.total || 0;
+    const pendingBillsReceivable = billsReceivablePendingAgg[0]?.total || 0;
+    const pendingInvoicesReceivable = invoicesPendingAgg[0]?.total || 0;
+    const totalPendingLiabilities = roundMoney(salaryPending + pendingBillsPayable);
+
+    // 7. Category Breakdowns
+    const [categoryExpenses, categoryIncome] = await Promise.all([
+      Transaction.aggregate([
+        { $match: { type: 'expense', status: { $in: ['approved', 'paid'] }, date: { $gte: start, $lte: end } } },
+        { $group: { _id: '$category', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+        { $sort: { total: -1 } },
+      ]),
+      Transaction.aggregate([
+        { $match: { type: 'revenue', status: { $in: ['approved', 'paid'] }, date: { $gte: start, $lte: end } } },
+        { $group: { _id: '$category', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+        { $sort: { total: -1 } },
+      ]),
+    ]);
+
+    // 8. Recent Activity
+    const recentTransactions = await Transaction.find({ status: { $in: ['approved', 'paid'] } })
+      .sort({ date: -1, createdAt: -1 })
+      .limit(8)
+      .populate('client', 'name company')
+      .populate('vendor', 'name')
+      .populate('employee', 'name email')
+      .lean();
+
+    res.json({
+      success: true,
+      data: {
+        period,
+        dateRange: { start, end },
+        cards: {
+          totalIncome,
+          incomeCount,
+          totalExpenses,
+          expenseCount,
+          netProfit,
+          openingBalance: totalOpeningBalance,
+          availableBalance,
+          salaryPaid,
+          salaryPaidCount,
+          salaryPending,
+          salaryPendingCount,
+          pendingBillsPayable,
+          pendingBillsReceivable,
+          pendingInvoicesReceivable,
+          totalPendingLiabilities,
+        },
+        bankAccounts,
+        categoryBreakdown: {
+          expense: categoryExpenses.map((c) => ({ category: c._id || 'Other', total: c.total, count: c.count })),
+          income: categoryIncome.map((c) => ({ category: c._id || 'Other', total: c.total, count: c.count })),
+        },
+        recentTransactions,
+      },
+    });
+  })
+);
+
+// ── Financial Reports Endpoint ───────────────────────
+router.get(
+  '/reports',
+  authorize('finance_overview', 'read'),
+  asyncHandler(async (req, res) => {
+    const period = String(req.query.period || 'this_year');
+    const { start, end } = getFinancePeriodRange(
+      period,
+      req.query.from ? String(req.query.from) : undefined,
+      req.query.to ? String(req.query.to) : undefined
+    );
+
+    // 1. Monthly Trends
+    const monthlyRaw = await Transaction.aggregate([
+      {
+        $match: {
+          status: { $in: ['approved', 'paid'] },
+          date: { $gte: start, $lte: end },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$date' },
+            month: { $month: '$date' },
+            type: '$type',
+          },
+          total: { $sum: '$amount' },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+    ]);
+
+    const monthMap = new Map<string, { month: string; income: number; expense: number; profit: number; count: number }>();
+    for (const item of monthlyRaw) {
+      const key = `${item._id.year}-${String(item._id.month).padStart(2, '0')}`;
+      if (!monthMap.has(key)) {
+        monthMap.set(key, { month: key, income: 0, expense: 0, profit: 0, count: 0 });
+      }
+      const m = monthMap.get(key)!;
+      if (item._id.type === 'revenue') {
+        m.income = roundMoney(m.income + item.total);
+      } else {
+        m.expense = roundMoney(m.expense + item.total);
+      }
+      m.count += item.count;
+      m.profit = roundMoney(m.income - m.expense);
+    }
+    const monthlyTrends = Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month));
+
+    // 2. Category distributions
+    const [catExp, catInc, salaryMonthly, openBills] = await Promise.all([
+      Transaction.aggregate([
+        { $match: { type: 'expense', status: { $in: ['approved', 'paid'] }, date: { $gte: start, $lte: end } } },
+        { $group: { _id: '$category', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+        { $sort: { total: -1 } },
+      ]),
+      Transaction.aggregate([
+        { $match: { type: 'revenue', status: { $in: ['approved', 'paid'] }, date: { $gte: start, $lte: end } } },
+        { $group: { _id: '$category', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+        { $sort: { total: -1 } },
+      ]),
+      Payroll.aggregate([
+        { $match: { status: 'disbursed', paidOn: { $gte: start, $lte: end } } },
+        { $group: { _id: '$period', total: { $sum: '$net' }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]),
+      Bill.aggregate([
+        { $match: { paymentStatus: { $in: ['unpaid', 'partially_paid'] } } },
+        {
+          $group: {
+            _id: '$type',
+            totalOutstanding: { $sum: '$outstandingAmount' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+    ]);
+
+    const totalIncomePeriod = catInc.reduce((s, c) => s + c.total, 0);
+    const totalExpensePeriod = catExp.reduce((s, c) => s + c.total, 0);
+
+    const categoryExpenses = catExp.map((c) => ({
+      category: c._id || 'Other',
+      total: c.total,
+      count: c.count,
+      pct: totalExpensePeriod > 0 ? Math.round((c.total / totalExpensePeriod) * 100) : 0,
+    }));
+
+    const categoryIncome = catInc.map((c) => ({
+      category: c._id || 'Other',
+      total: c.total,
+      count: c.count,
+      pct: totalIncomePeriod > 0 ? Math.round((c.total / totalIncomePeriod) * 100) : 0,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        period,
+        dateRange: { start, end },
+        summary: {
+          totalIncome: totalIncomePeriod,
+          totalExpenses: totalExpensePeriod,
+          netProfit: roundMoney(totalIncomePeriod - totalExpensePeriod),
+          margin: totalIncomePeriod > 0 ? Math.round(((totalIncomePeriod - totalExpensePeriod) / totalIncomePeriod) * 100) : 0,
+        },
+        monthlyTrends,
+        categoryExpenses,
+        categoryIncome,
+        salaryTrends: salaryMonthly.map((s) => ({ period: s._id, totalPaid: s.total, count: s.count })),
+        openBillsSummary: openBills,
+      },
+    });
   })
 );
 

@@ -101,7 +101,10 @@ router.post(
     const notes = body.notes?.trim() || '';
     const customTasks = (body.customTasks || []).map((t) => t.trim()).filter(Boolean);
     const taskIds = [...new Set(body.taskIds || [])];
-    const effectiveNotes = notes || (customTasks.length || taskIds.length ? '' : 'Regular workday session completed.');
+    if (!notes && !customTasks.length && !taskIds.length) {
+      throw new AppError('Please provide work log notes or completed tasks before checking out.', 400, 'WORKLOG_REQUIRED');
+    }
+    const effectiveNotes = notes;
 
     const date = companyDateKey();
     const now = new Date();

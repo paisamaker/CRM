@@ -4,13 +4,21 @@ export interface ITransaction extends Document {
   type: 'revenue' | 'expense';
   category: string;
   amount: number;
+  taxAmount?: number;
+  title?: string;
+  description?: string;
   currency: string;
   date: Date;
   client?: Types.ObjectId;
   vendor?: Types.ObjectId;
+  employee?: Types.ObjectId;
   project?: Types.ObjectId;
   invoice?: Types.ObjectId;
+  bill?: Types.ObjectId;
+  payroll?: Types.ObjectId;
+  bankAccount?: Types.ObjectId;
   receipt?: { name: string; url: string };
+  attachment?: { name: string; url: string; mime?: string; size?: number };
   paymentMethod?: string;
   status: 'draft' | 'pending' | 'approved' | 'rejected' | 'paid' | 'cancelled';
   approval?: Types.ObjectId;
@@ -25,18 +33,31 @@ const transactionSchema = new Schema<ITransaction>(
     type: { type: String, enum: ['revenue', 'expense'], required: true, index: true },
     category: { type: String, required: true, index: true },
     amount: { type: Number, required: true, min: 0 },
+    taxAmount: { type: Number, default: 0, min: 0 },
+    title: { type: String, trim: true },
+    description: { type: String, trim: true },
     currency: { type: String, default: 'INR' },
     date: { type: Date, required: true, index: true },
     client: { type: Schema.Types.ObjectId, ref: 'Client', index: true },
-    vendor: { type: Schema.Types.ObjectId, ref: 'Vendor' },
-    project: { type: Schema.Types.ObjectId, ref: 'Project' },
-    invoice: { type: Schema.Types.ObjectId, ref: 'Invoice' },
+    vendor: { type: Schema.Types.ObjectId, ref: 'Vendor', index: true },
+    employee: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    project: { type: Schema.Types.ObjectId, ref: 'Project', index: true },
+    invoice: { type: Schema.Types.ObjectId, ref: 'Invoice', index: true },
+    bill: { type: Schema.Types.ObjectId, ref: 'Bill', index: true },
+    payroll: { type: Schema.Types.ObjectId, ref: 'Payroll', index: true },
+    bankAccount: { type: Schema.Types.ObjectId, ref: 'BankAccount', index: true },
     receipt: { name: String, url: String },
+    attachment: {
+      name: String,
+      url: String,
+      mime: String,
+      size: Number,
+    },
     paymentMethod: String,
     status: {
       type: String,
       enum: ['draft', 'pending', 'approved', 'rejected', 'paid', 'cancelled'],
-      default: 'pending',
+      default: 'paid',
       index: true,
     },
     approval: { type: Schema.Types.ObjectId, ref: 'Approval' },

@@ -15,7 +15,7 @@ const sizes = {
 type ModalProps = {
   open: boolean;
   onClose: () => void;
-  title: string;
+  title: ReactNode;
   description?: string;
   children: ReactNode;
   footer?: ReactNode;

@@ -12,6 +12,10 @@ export interface IPayroll extends Document {
   net: number;
   status: 'draft' | 'pending_approval' | 'approved' | 'disbursed' | 'rejected';
   paidOn?: Date;
+  paymentMethod?: string;
+  transactionRef?: string;
+  transaction?: Types.ObjectId;
+  slipUrl?: string;
   approval?: Types.ObjectId;
   notes?: string;
   createdBy: Types.ObjectId;
@@ -37,6 +41,10 @@ const payrollSchema = new Schema<IPayroll>(
       index: true,
     },
     paidOn: Date,
+    paymentMethod: String,
+    transactionRef: String,
+    transaction: { type: Schema.Types.ObjectId, ref: 'Transaction' },
+    slipUrl: String,
     approval: { type: Schema.Types.ObjectId, ref: 'Approval' },
     notes: String,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },

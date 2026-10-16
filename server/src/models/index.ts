@@ -21,3 +21,5 @@ export * from './Attendance.js';
 export * from './Conversation.js';
 export * from './ChatMessage.js';
 export * from './Team.js';
+export * from './FinanceCategory.js';
+export * from './Bill.js';
