@@ -9,14 +9,17 @@ export async function initCloudinary(): Promise<boolean> {
   const settings = await getSettings().catch(() => null);
   const cloudName =
     env.CLOUDINARY_CLOUD_NAME ||
+    settings?.cloudinary?.cloudName ||
     settings?.get?.('cloudinary.cloudName') ||
     process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey =
     env.CLOUDINARY_API_KEY ||
+    settings?.cloudinary?.apiKey ||
     settings?.get?.('cloudinary.apiKey') ||
     process.env.CLOUDINARY_API_KEY;
   const apiSecret =
     env.CLOUDINARY_API_SECRET ||
+    settings?.cloudinary?.apiSecret ||
     settings?.get?.('cloudinary.apiSecret') ||
     process.env.CLOUDINARY_API_SECRET;
 
@@ -42,7 +45,7 @@ export async function uploadImageToCloudinary(
   folder = 'starmedia/avatars'
 ): Promise<{ secure_url: string; public_id: string } | null> {
   try {
-    const ready = isConfigured || (await initCloudinary());
+    const ready = await initCloudinary();
     if (!ready) return null;
 
     const result = await cloudinary.uploader.upload(filePath, {

@@ -25,7 +25,7 @@ const documentSchema = new Schema<IDocument>(
     uploadedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     visibility: { type: String, enum: ['company', 'private'], default: 'company' },
     project: { type: Schema.Types.ObjectId, ref: 'Project', index: true },
-    linkedModel: { type: String, enum: ['Project', 'Task', 'Client', 'Invoice', 'Lead'] },
+    linkedModel: { type: String, enum: ['Project', 'Task', 'Client', 'Invoice', 'Lead', 'User', 'Team'] },
     linkedId: { type: Schema.Types.ObjectId, refPath: 'linkedModel' },
   },
   { timestamps: true }
