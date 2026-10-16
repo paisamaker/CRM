@@ -1,4 +1,5 @@
 import mongoose, { Schema, type Document } from 'mongoose';
+import { memoryCache } from '../utils/cache.js';
 
 export interface ISettings extends Document {
   allowedDomains: string[];
@@ -108,6 +109,9 @@ const SIMPLE_PASSWORD_POLICY = {
 };
 
 export async function getSettings(): Promise<ISettings> {
+  const cached = memoryCache.get<ISettings>('system_settings');
+  if (cached) return cached;
+
   let doc = await Settings.findOne();
   if (!doc) {
     doc = await Settings.create({});
@@ -134,5 +138,6 @@ export async function getSettings(): Promise<ISettings> {
     await doc.save();
   }
 
+  memoryCache.set('system_settings', doc, 60);
   return doc;
 }

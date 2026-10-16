@@ -46,6 +46,7 @@ import {
   format,
 } from 'date-fns';
 import { roundMoney, addMoney, subMoney } from '../../utils/money.js';
+import { memoryCache } from '../../utils/cache.js';
 
 const router = Router();
 router.use(authenticate);
@@ -1684,6 +1685,12 @@ router.get(
   authorize('finance_overview', 'read'),
   asyncHandler(async (req, res) => {
     const period = String(req.query.period || 'this_month');
+    const cacheKey = `finance_dashboard_${period}_${req.query.from || ''}_${req.query.to || ''}`;
+    const cached = memoryCache.get(cacheKey);
+    if (cached) {
+      return res.json({ success: true, data: cached });
+    }
+
     const { start, end } = getFinancePeriodRange(
       period,
       req.query.from ? String(req.query.from) : undefined,
@@ -1792,9 +1799,7 @@ router.get(
       .populate('employee', 'name email')
       .lean();
 
-    res.json({
-      success: true,
-      data: {
+    const summaryPayload = {
         period,
         dateRange: { start, end },
         cards: {
@@ -1820,9 +1825,15 @@ router.get(
           income: categoryIncome.map((c) => ({ category: c._id || 'Other', total: c.total, count: c.count })),
         },
         recentTransactions,
-      },
-    });
-  })
+      };
+
+      memoryCache.set(cacheKey, summaryPayload, 20);
+      res.json({
+        success: true,
+        data: summaryPayload,
+      });
+    }
+  )
 );
 
 // ── Financial Reports Endpoint ───────────────────────

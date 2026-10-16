@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { OAuth2Client } from 'google-auth-library';
 import type { Request } from 'express';
 import { env, isAllowedEmail } from '../../config/env.js';
-import { MFA_REQUIRED_ROLES, type Role } from '../../config/permissions.js';
+import { MFA_REQUIRED_ROLES, PERMISSIONS, type Role } from '../../config/permissions.js';
 import { User, type IUser } from '../../models/User.js';
 import { getSettings } from '../../models/Settings.js';
 import {
@@ -207,6 +207,7 @@ export async function login(email: string, password: string, req?: Request) {
     requiresMfa: false as const,
     requiresMfaSetup: needsMfa && !user.mfa.enabled,
     ...tokens,
+    permissions: PERMISSIONS[user.role],
   };
 }
 
@@ -236,7 +237,10 @@ export async function verifyMfa(tempToken: string, code: string, req?: Request) 
 
   const tokens = await issueTokens(user, true, req);
   await writeAudit({ actor: user._id, action: 'mfa_verify', entity: 'User', entityId: user._id.toString(), req });
-  return tokens;
+  return {
+    ...tokens,
+    permissions: PERMISSIONS[user.role],
+  };
 }
 
 export async function setupMfa(userId: string) {

@@ -4,8 +4,14 @@ import { logger } from '../utils/logger.js';
 
 export async function connectDB(): Promise<void> {
   mongoose.set('strictQuery', true);
-  await mongoose.connect(env.MONGODB_URI);
-  logger.info('MongoDB connected');
+  await mongoose.connect(env.MONGODB_URI, {
+    maxPoolSize: 50,
+    minPoolSize: 10,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+    heartbeatFrequencyMS: 10000,
+  });
+  logger.info('MongoDB connected with pooled connections');
 }
 
 export async function ensureIndexes(): Promise<void> {

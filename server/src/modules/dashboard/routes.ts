@@ -16,6 +16,7 @@ import { Attendance } from '../../models/Attendance.js';
 import { Conversation } from '../../models/Conversation.js';
 import { roundMoney, pctSafe } from '../../utils/money.js';
 import { companyDateKey } from '../../utils/timezone.js';
+import { memoryCache } from '../../utils/cache.js';
 import {
   startOfDay,
   endOfDay,
@@ -94,7 +95,14 @@ router.get(
   '/ceo',
   authorize('dashboard_ceo', 'read'),
   asyncHandler(async (req, res) => {
-    const range = resolveRange(String(req.query.range || 'month'), String(req.query.from || ''), String(req.query.to || ''));
+    const rangePreset = String(req.query.range || 'month');
+    const cacheKey = `dashboard_ceo_${rangePreset}_${req.query.from || ''}_${req.query.to || ''}`;
+    const cached = memoryCache.get(cacheKey);
+    if (cached) {
+      return res.json({ success: true, data: cached });
+    }
+
+    const range = resolveRange(rangePreset, String(req.query.from || ''), String(req.query.to || ''));
 
     const now = new Date();
     const [
@@ -293,10 +301,8 @@ router.get(
     const completedCount = stats.completion.find((c: { _id: string }) => c._id === 'completed')?.count || 0;
     const totalTasks = stats.completion.reduce((s: number, c: { count: number }) => s + c.count, 0);
 
-    res.json({
-      success: true,
-      data: {
-        range: { start: range.start, end: range.end },
+    const dashboardPayload = {
+      range: { start: range.start, end: range.end },
         kpis: {
           revenue: {
             value: revenue,
@@ -339,20 +345,31 @@ router.get(
           topPerformers: stats.topPerformers,
         },
         pendingApprovals,
-      },
-    });
-  })
+      };
+
+      memoryCache.set(cacheKey, dashboardPayload, 20);
+      res.json({ success: true, data: dashboardPayload });
+    }
+  )
 );
 
 router.get(
   '/employee',
   authorize('dashboard_employee', 'read'),
   asyncHandler(async (req, res) => {
+    const cacheKey = `dashboard_employee_${req.user!.id}`;
+    const cached = memoryCache.get(cacheKey);
+    if (cached) {
+      return res.json({ success: true, data: cached });
+    }
+
     const uid = new mongoose.Types.ObjectId(req.user!.id);
     const now = new Date();
     const tasks = await Task.find({ assignees: uid })
+      .select('title status dueDate priority progress project')
       .populate('project', 'name')
-      .sort('dueDate')
+      .sort('-updatedAt')
+      .limit(100)
       .lean();
 
     const today = tasks.filter(
@@ -407,34 +424,34 @@ router.get(
         ? Math.max(0, Math.round((Date.now() - new Date(attendanceToday.checkInAt).getTime()) / 60000))
         : 0);
 
-    res.json({
-      success: true,
-      data: {
-        tasks: { today, week, overdue, priority, all: tasks.slice(0, 50) },
-        projects,
-        attendance: {
-          date: dateKey,
-          today: attendanceToday,
-          history: attendanceHistory,
-          isCheckedIn: !!attendanceToday?.checkInAt && !attendanceToday?.checkOutAt,
-          workMinutes: attendanceMinutes,
-        },
-        chat: recentChats,
-        time: {
-          todayMinutes: todayLogs[0]?.minutes || attendanceMinutes,
-          weekMinutes: weekLogs[0]?.minutes || 0,
-          activeTimer,
-        },
-        targets: {
-          tasksCompleted: tasks.filter((t) => t.status === 'completed').length,
-          tasksTotal: tasks.length,
-          progressAvg:
-            tasks.length > 0
-              ? tasks.reduce((s, t) => s + (t.progress || 0), 0) / tasks.length
-              : 0,
-        },
+    const employeePayload = {
+      tasks: { today, week, overdue, priority, all: tasks.slice(0, 50) },
+      projects,
+      attendance: {
+        date: dateKey,
+        today: attendanceToday,
+        history: attendanceHistory,
+        isCheckedIn: !!attendanceToday?.checkInAt && !attendanceToday?.checkOutAt,
+        workMinutes: attendanceMinutes,
       },
-    });
+      chat: recentChats,
+      time: {
+        todayMinutes: todayLogs[0]?.minutes || attendanceMinutes,
+        weekMinutes: weekLogs[0]?.minutes || 0,
+        activeTimer,
+      },
+      targets: {
+        tasksCompleted: tasks.filter((t) => t.status === 'completed').length,
+        tasksTotal: tasks.length,
+        progressAvg:
+          tasks.length > 0
+            ? tasks.reduce((s, t) => s + (t.progress || 0), 0) / tasks.length
+            : 0,
+      },
+    };
+
+    memoryCache.set(cacheKey, employeePayload, 20);
+    res.json({ success: true, data: employeePayload });
   })
 );
 

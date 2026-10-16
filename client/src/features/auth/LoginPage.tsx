@@ -71,17 +71,21 @@ export function LoginPage() {
       }
 
       setSession(payload.accessToken, payload.user);
-      try {
-        const me = await api.get('/auth/me');
-        if (me?.data?.data?.permissions) {
-          setPermissions(me.data.data.permissions);
+      if (payload.permissions) {
+        setPermissions(payload.permissions);
+      } else {
+        try {
+          const me = await api.get('/auth/me');
+          if (me?.data?.data?.permissions) {
+            setPermissions(me.data.data.permissions);
+          }
+        } catch {
+          // Ignore permissions fetch error
         }
-      } catch {
-        // Ignore permissions fetch error and continue to dashboard
       }
 
       toast.success(`Welcome back, ${payload.user.name}`);
-      // Always open dashboard after login
+      // Navigate immediately to dashboard without blocking
       navigate('/dashboard', { replace: true });
     } catch (err) {
       toast.error(getErrorMessage(err));

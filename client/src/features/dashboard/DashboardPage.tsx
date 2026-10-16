@@ -241,6 +241,24 @@ function CeoDashboard() {
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
+  if (isLoading && !data) {
+    return (
+      <div className="space-y-5 bg-[#F7F8FA] min-h-screen pb-12 font-sans p-1">
+        <Skeleton className="h-14 rounded-2xl w-full" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Skeleton className="h-28 rounded-2xl" />
+          <Skeleton className="h-28 rounded-2xl" />
+          <Skeleton className="h-28 rounded-2xl" />
+          <Skeleton className="h-28 rounded-2xl" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <Skeleton className="h-72 rounded-2xl lg:col-span-2" />
+          <Skeleton className="h-72 rounded-2xl" />
+        </div>
+      </div>
+    );
+  }
+
   const k = data?.kpis;
 
   // Enriched revenue trend chart data with operating profit
