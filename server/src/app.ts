@@ -38,14 +38,38 @@ export function createApp() {
   app.use(
     cors({
       origin: (origin, callback) => {
-        // Allow non-browser tools (no Origin) and configured Vite ports
-        if (!origin || env.clientOrigins.includes(origin)) {
+        // Allow non-browser tools (curl, postman, server-to-server)
+        if (!origin) {
           callback(null, true);
           return;
         }
+
+        const normalizedOrigin = origin.replace(/\/+$/, '');
+
+        // Check if origin matches any explicitly configured CLIENT_URL
+        if (env.clientOrigins.includes(normalizedOrigin)) {
+          callback(null, true);
+          return;
+        }
+
+        // Automatically allow any Vercel domain (*.vercel.app)
+        const isVercelDomain = /^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(normalizedOrigin);
+        if (isVercelDomain) {
+          callback(null, true);
+          return;
+        }
+
+        // Allow localhost on any port in development
+        if (env.NODE_ENV !== 'production' && /^http:\/\/localhost(:\d+)?$/.test(normalizedOrigin)) {
+          callback(null, true);
+          return;
+        }
+
         callback(new Error(`CORS blocked for origin: ${origin}`));
       },
       credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     })
   );
   app.use(express.json({ limit: '2mb' }));

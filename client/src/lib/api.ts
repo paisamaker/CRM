@@ -2,9 +2,21 @@ import axios from 'axios';
 import { useAuthStore } from '@/stores/auth';
 
 const rawApiBase = import.meta.env.VITE_API_URL?.trim();
-export const API_BASE_URL = rawApiBase
-  ? rawApiBase.replace(/\/+$/, '')
-  : '/api/v1';
+
+function resolveApiBaseUrl(): string {
+  if (!rawApiBase) return '/api/v1';
+  let url = rawApiBase.replace(/\/+$/, '');
+  if (!url.includes('/api/v1')) {
+    if (url.endsWith('/api')) {
+      url = `${url}/v1`;
+    } else {
+      url = `${url}/api/v1`;
+    }
+  }
+  return url;
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export const api = axios.create({
   baseURL: API_BASE_URL,

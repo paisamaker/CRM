@@ -53,7 +53,7 @@ export const env = {
     .map((d) => d.trim().toLowerCase())
     .filter(Boolean),
   clientOrigins: parsed.data.CLIENT_URL.split(',')
-    .map((u) => u.trim())
+    .map((u) => u.trim().replace(/\/+$/, ''))
     .filter(Boolean),
 };
 

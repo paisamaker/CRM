@@ -11,7 +11,19 @@ let io: Server | null = null;
 export function initSocket(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
     cors: {
-      origin: env.clientOrigins,
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        const norm = origin.replace(/\/+$/, '');
+        if (
+          env.clientOrigins.includes(norm) ||
+          /^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(norm) ||
+          (env.NODE_ENV !== 'production' && /^http:\/\/localhost(:\d+)?$/.test(norm))
+        ) {
+          callback(null, true);
+        } else {
+          callback(new Error('Socket CORS blocked'));
+        }
+      },
       credentials: true,
     },
   });
