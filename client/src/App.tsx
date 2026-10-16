@@ -1,9 +1,11 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { useAuthStore } from '@/stores/auth';
+import { isTokenExpired, refreshSession } from '@/lib/api';
 
 // Eagerly loaded for instant login performance
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -57,6 +59,24 @@ function PageLoader() {
 }
 
 export default function App() {
+  useEffect(() => {
+    let mounted = true;
+    async function initSession() {
+      const { accessToken } = useAuthStore.getState();
+      // If no token exists in memory/storage OR if it is expired, restore from 7-day cookie
+      if (!accessToken || isTokenExpired(accessToken)) {
+        await refreshSession();
+      }
+      if (mounted) {
+        useAuthStore.setState({ isRestoring: false });
+      }
+    }
+    initSession();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>

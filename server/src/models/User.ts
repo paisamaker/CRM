@@ -37,7 +37,7 @@ export interface IUser extends Document {
   failedAttempts: number;
   lockUntil?: Date;
   avatar?: string;
-  refreshTokens: { token: string; createdAt: Date; userAgent?: string; ip?: string }[];
+  refreshTokens: { token: string; createdAt: Date; rotatedAt?: Date; userAgent?: string; ip?: string }[];
   inviteToken?: string;
   inviteExpires?: Date;
   resetToken?: string;
@@ -97,6 +97,7 @@ const userSchema = new Schema<IUser>(
       {
         token: String,
         createdAt: { type: Date, default: Date.now },
+        rotatedAt: Date,
         userAgent: String,
         ip: String,
       },

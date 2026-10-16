@@ -20,7 +20,9 @@ interface AuthState {
   accessToken: string | null;
   user: AuthUser | null;
   permissions: Record<string, string[]> | null;
-  setSession: (token: string, user: AuthUser) => void;
+  isRestoring: boolean;
+  setSession: (token: string, user: AuthUser, permissions?: Record<string, string[]>) => void;
+  setRestoring: (isRestoring: boolean) => void;
   updateUser: (fields: Partial<AuthUser>) => void;
   setPermissions: (permissions: Record<string, string[]>) => void;
   clearSession: () => void;
@@ -33,10 +35,18 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       user: null,
       permissions: null,
-      setSession: (accessToken, user) => set({ accessToken, user }),
+      isRestoring: true,
+      setSession: (accessToken, user, permissions) =>
+        set((s) => ({
+          accessToken,
+          user,
+          permissions: permissions !== undefined ? permissions : s.permissions,
+          isRestoring: false,
+        })),
+      setRestoring: (isRestoring) => set({ isRestoring }),
       updateUser: (fields) => set((s) => ({ user: s.user ? { ...s.user, ...fields } : null })),
       setPermissions: (permissions) => set({ permissions }),
-      clearSession: () => set({ accessToken: null, user: null, permissions: null }),
+      clearSession: () => set({ accessToken: null, user: null, permissions: null, isRestoring: false }),
       can: (resource, action) => {
         const { user, permissions } = get();
         if (!user) return false;

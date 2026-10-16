@@ -42,12 +42,13 @@ export function LoginPage() {
   // If already authenticated, redirect directly to dashboard
   const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
+  const isRestoring = useAuthStore((s) => s.isRestoring);
 
   useEffect(() => {
-    if (accessToken && user) {
+    if (!isRestoring && accessToken && user) {
       navigate('/dashboard', { replace: true });
     }
-  }, [accessToken, user, navigate]);
+  }, [isRestoring, accessToken, user, navigate]);
 
   // Ensure fields are completely blank on mount and clear any delayed browser autofill
   useEffect(() => {
@@ -58,6 +59,17 @@ export function LoginPage() {
     }, 100);
     return () => clearTimeout(timer);
   }, [form]);
+
+  if (isRestoring) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-slate-50 font-sans">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-9 w-9 animate-spin rounded-full border-2 border-slate-200 border-t-rose-600" />
+          <span className="text-xs font-medium text-slate-500">Checking session…</span>
+        </div>
+      </div>
+    );
+  }
 
   async function onSubmit(values: Form) {
     setLoading(true);
@@ -70,7 +82,7 @@ export function LoginPage() {
         return;
       }
 
-      setSession(payload.accessToken, payload.user);
+      setSession(payload.accessToken, payload.user, payload.permissions);
       if (payload.permissions) {
         setPermissions(payload.permissions);
       } else {

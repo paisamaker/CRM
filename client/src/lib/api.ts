@@ -23,13 +23,79 @@ export const api = axios.create({
   withCredentials: true,
 });
 
-api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().accessToken;
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+export function isTokenExpired(token: string | null): boolean {
+  if (!token) return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1]));
+    if (!payload.exp) return false;
+    // Proactively consider expired 30 seconds before actual exp timestamp
+    return Date.now() >= payload.exp * 1000 - 30_000;
+  } catch {
+    return true;
+  }
+}
+
+let refreshingPromise: Promise<string | null> | null = null;
+
+export async function refreshSession(): Promise<string | null> {
+  if (refreshingPromise) return refreshingPromise;
+
+  refreshingPromise = (async () => {
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/auth/refresh`,
+        {},
+        { withCredentials: true }
+      );
+      const data = res.data?.data;
+      const token = data?.accessToken as string;
+      if (token && data?.user) {
+        useAuthStore.getState().setSession(token, data.user, data.permissions);
+      }
+      return token || null;
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 401 || status === 403) {
+        useAuthStore.getState().clearSession();
+      }
+      return null;
+    } finally {
+      refreshingPromise = null;
+    }
+  })();
+
+  return refreshingPromise;
+}
+
+api.interceptors.request.use(async (config) => {
+  const isAuthEndpoint =
+    config.url?.includes('/auth/login') ||
+    config.url?.includes('/auth/refresh') ||
+    config.url?.includes('/auth/google') ||
+    config.url?.includes('/auth/mfa');
+
+  let token = useAuthStore.getState().accessToken;
+
+  // Proactive refresh: if token is expired, refresh it before sending request
+  if (!isAuthEndpoint && token && isTokenExpired(token)) {
+    const freshToken = await refreshSession();
+    if (freshToken) {
+      token = freshToken;
+    }
+  }
+
+  if (token) {
+    if (config.headers && typeof config.headers.set === 'function') {
+      config.headers.set('Authorization', `Bearer ${token}`);
+    } else {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
   return config;
 });
-
-let refreshing: Promise<string | null> | null = null;
 
 api.interceptors.response.use(
   (res) => res,
@@ -38,43 +104,28 @@ api.interceptors.response.use(
     const isAuthEndpoint =
       original?.url?.includes('/auth/login') ||
       original?.url?.includes('/auth/refresh') ||
-      original?.url?.includes('/auth/google');
+      original?.url?.includes('/auth/google') ||
+      original?.url?.includes('/auth/mfa');
 
     if (error.response?.status === 401 && !original?._retry && !isAuthEndpoint) {
       original._retry = true;
       try {
-        if (!refreshing) {
-          // Use raw axios to avoid interceptor adding expired token header
-          refreshing = axios
-            .post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
-            .then((r) => {
-              const token = r.data.data.accessToken as string;
-              if (token && r.data.data.user) {
-                useAuthStore.getState().setSession(token, r.data.data.user);
-              }
-              return token;
-            })
-            .catch(() => {
-              useAuthStore.getState().clearSession();
-              if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-                window.location.href = `/login?expired=1&from=${encodeURIComponent(window.location.pathname)}`;
-              }
-              return null;
-            })
-            .finally(() => {
-              refreshing = null;
-            });
-        }
-        const token = await refreshing;
+        const token = await refreshSession();
         if (token) {
-          original.headers.Authorization = `Bearer ${token}`;
+          if (original.headers && typeof original.headers.set === 'function') {
+            original.headers.set('Authorization', `Bearer ${token}`);
+          } else {
+            original.headers = original.headers || {};
+            original.headers.Authorization = `Bearer ${token}`;
+          }
           return api(original);
         }
       } catch {
-        useAuthStore.getState().clearSession();
-        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-          window.location.href = `/login?expired=1&from=${encodeURIComponent(window.location.pathname)}`;
-        }
+        // Fallthrough
+      }
+      useAuthStore.getState().clearSession();
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        window.location.href = `/login?expired=1&from=${encodeURIComponent(window.location.pathname)}`;
       }
     }
     return Promise.reject(error);

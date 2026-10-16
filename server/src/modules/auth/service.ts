@@ -299,8 +299,8 @@ export async function refresh(refreshToken: string, req?: Request) {
   const hashed = hashToken(refreshToken);
   const user = await User.findById(payload.sub).select('+mfa.secret');
   if (!user) throw new UnauthorizedError();
-  const exists = user.refreshTokens.some((t) => t.token === hashed);
-  if (!exists) throw new UnauthorizedError('Refresh token revoked');
+  const matchingToken = user.refreshTokens.find((t) => t.token === hashed);
+  if (!matchingToken) throw new UnauthorizedError('Refresh token revoked');
 
   // Preserve MFA verification state from refresh token (do not escalate)
   let mfaVerified = payload.mfaVerified !== false;
@@ -308,9 +308,35 @@ export async function refresh(refreshToken: string, req?: Request) {
     throw new UnauthorizedError('MFA required — please sign in again');
   }
 
-  // Rotate
-  user.refreshTokens = user.refreshTokens.filter((t) => t.token !== hashed);
-  return issueTokens(user, mfaVerified, req);
+  // If token was already rotated within a 30s grace window (concurrent requests or multiple browser tabs)
+  if (matchingToken.rotatedAt) {
+    const elapsed = Date.now() - matchingToken.rotatedAt.getTime();
+    if (elapsed > 30_000) {
+      // Replay attack after grace window: revoke all sessions as security precaution
+      user.refreshTokens = [];
+      await user.save();
+      throw new UnauthorizedError('Suspicious session activity detected. Please sign in again.');
+    }
+    // Concurrent request within 30s grace window: return fresh tokens safely
+    const tokens = await issueTokens(user, mfaVerified, req);
+    return {
+      ...tokens,
+      permissions: PERMISSIONS[user.role],
+    };
+  }
+
+  // Normal rotation: mark rotatedAt timestamp and clean up old rotated tokens
+  matchingToken.rotatedAt = new Date();
+  const now = Date.now();
+  user.refreshTokens = user.refreshTokens.filter(
+    (t) => !t.rotatedAt || now - t.rotatedAt.getTime() < 60_000
+  );
+
+  const tokens = await issueTokens(user, mfaVerified, req);
+  return {
+    ...tokens,
+    permissions: PERMISSIONS[user.role],
+  };
 }
 
 export async function logout(userId: string, refreshToken?: string) {

@@ -25,9 +25,13 @@ export function MfaPage() {
     setLoading(true);
     try {
       const { data } = await api.post('/auth/mfa/verify', { tempToken, code });
-      setSession(data.data.accessToken, data.data.user);
-      const me = await api.get('/auth/me');
-      setPermissions(me.data.data.permissions);
+      setSession(data.data.accessToken, data.data.user, data.data.permissions);
+      if (data.data.permissions) {
+        setPermissions(data.data.permissions);
+      } else {
+        const me = await api.get('/auth/me');
+        setPermissions(me.data.data.permissions);
+      }
       toast.success('MFA verified successfully');
       navigate('/dashboard');
     } catch (err) {

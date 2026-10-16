@@ -26,25 +26,43 @@ import { PERMISSIONS } from '../../config/permissions.js';
 
 const REFRESH_COOKIE = 'sm_refresh';
 
-function setRefreshCookie(res: Response, token: string) {
-  res.cookie(REFRESH_COOKIE, token, {
+function getCookieOptions(req?: Request) {
+  const isSecure =
+    env.COOKIE_SECURE ||
+    env.NODE_ENV === 'production' ||
+    Boolean(req?.secure) ||
+    req?.get('x-forwarded-proto') === 'https';
+
+  return {
     httpOnly: true,
-    secure: env.COOKIE_SECURE || env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    secure: isSecure,
+    sameSite: (isSecure ? 'none' : 'lax') as 'none' | 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     path: '/api/v1/auth',
-  });
+    ...(isSecure ? { partitioned: true } : {}),
+  };
 }
 
-function clearRefreshCookie(res: Response) {
-  res.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+function setRefreshCookie(res: Response, token: string, req?: Request) {
+  res.cookie(REFRESH_COOKIE, token, getCookieOptions(req));
+}
+
+function clearRefreshCookie(res: Response, req?: Request) {
+  const opts = getCookieOptions(req);
+  res.clearCookie(REFRESH_COOKIE, {
+    path: opts.path,
+    httpOnly: opts.httpOnly,
+    secure: opts.secure,
+    sameSite: opts.sameSite,
+    ...(opts.secure ? { partitioned: true } : {}),
+  });
 }
 
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const body = loginSchema.parse(req.body);
   const result = await authService.login(body.email, body.password, req);
   if ('accessToken' in result && result.accessToken) {
-    setRefreshCookie(res, result.refreshToken);
+    setRefreshCookie(res, result.refreshToken, req);
   }
   res.json({ success: true, data: result });
 });
@@ -52,7 +70,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
 export const verifyMfa = asyncHandler(async (req: Request, res: Response) => {
   const body = mfaVerifySchema.parse(req.body);
   const result = await authService.verifyMfa(body.tempToken, body.code, req);
-  setRefreshCookie(res, result.refreshToken);
+  setRefreshCookie(res, result.refreshToken, req);
   res.json({ success: true, data: result });
 });
 
@@ -77,20 +95,20 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
   const token = req.cookies?.[REFRESH_COOKIE] || req.body.refreshToken;
   if (!token) throw new UnauthorizedError('Missing refresh token');
   const result = await authService.refresh(token, req);
-  setRefreshCookie(res, result.refreshToken);
+  setRefreshCookie(res, result.refreshToken, req);
   res.json({ success: true, data: result });
 });
 
 export const logout = asyncHandler(async (req: Request, res: Response) => {
   const token = req.cookies?.[REFRESH_COOKIE];
   if (req.user) await authService.logout(req.user.id, token);
-  clearRefreshCookie(res);
+  clearRefreshCookie(res, req);
   res.json({ success: true, data: { ok: true } });
 });
 
 export const logoutAll = asyncHandler(async (req: Request, res: Response) => {
   await authService.logoutAll(req.user!.id);
-  clearRefreshCookie(res);
+  clearRefreshCookie(res, req);
   res.json({ success: true, data: { ok: true } });
 });
 
@@ -127,7 +145,7 @@ export const google = asyncHandler(async (req: Request, res: Response) => {
   const body = googleSchema.parse(req.body);
   const result = await authService.googleLogin(body.idToken, req);
   if ('accessToken' in result && result.accessToken) {
-    setRefreshCookie(res, result.refreshToken);
+    setRefreshCookie(res, result.refreshToken, req);
   }
   res.json({ success: true, data: result });
 });
