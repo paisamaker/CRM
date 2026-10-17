@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft,
@@ -8,6 +8,11 @@ import {
   X,
   Clock3,
   ListTodo,
+  Calendar,
+  FolderKanban,
+  CheckCircle2,
+  Tag,
+  User,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '@/lib/api';
@@ -150,6 +155,8 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
   const [comment, setComment] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [subsCollapsed, setSubsCollapsed] = useState(false);
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [subForm, setSubForm] = useState({
     title: '',
     description: '',
@@ -303,27 +310,29 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-start justify-between gap-3 border-b border-[var(--divider)] px-4 py-3 sm:px-6">
+          <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 sm:px-6 backdrop-blur-xs">
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--fg-muted)]">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
                 {task?.parentTask ? (
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 font-medium text-[var(--brand)] hover:underline"
+                    className="inline-flex items-center gap-1 font-semibold text-teal-700 hover:text-teal-800 transition"
                     onClick={() => onOpenTask(task.parentTask!._id)}
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
-                    {task.parentTask.key || 'Parent'} · {task.parentTask.title}
+                    <span>{task.parentTask.key || 'Parent'}</span>
+                    <span className="text-slate-400">·</span>
+                    <span className="truncate max-w-[150px]">{task.parentTask.title}</span>
                   </button>
                 ) : null}
                 {task?.project?.name ? (
-                  <span>
-                    {task.parentTask ? ' / ' : ''}
+                  <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                    <FolderKanban className="h-3 w-3 text-slate-500" />
                     {task.project.name}
                   </span>
                 ) : null}
                 {task?.key ? (
-                  <span className="rounded border border-[var(--border)] bg-[var(--bg)] px-1.5 py-0.5 font-mono text-[11px] font-semibold text-[var(--fg-secondary)]">
+                  <span className="rounded-md border border-teal-200 bg-teal-50 px-2 py-0.5 font-mono text-[11px] font-bold text-teal-800">
                     {task.key}
                   </span>
                 ) : null}
@@ -334,7 +343,7 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                   <Input
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="text-lg font-semibold"
+                    className="text-lg font-bold"
                     autoFocus
                   />
                   <Button
@@ -351,7 +360,7 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
               ) : (
                 <button
                   type="button"
-                  className="mt-1 block w-full truncate text-left text-xl font-semibold tracking-tight text-[var(--fg)] hover:text-[var(--brand)] sm:text-2xl"
+                  className="mt-1.5 block w-full truncate text-left text-lg font-bold tracking-tight text-slate-900 hover:text-teal-700 transition sm:text-2xl"
                   onClick={() => canWrite && setEditTitle(true)}
                   title="Click to edit title"
                 >
@@ -359,20 +368,54 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                 </button>
               )}
 
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" disabled className="opacity-60">
-                  <Paperclip className="h-3.5 w-3.5" />
-                  Attach
+              {/* Header Action Bar */}
+              <div className="mt-2.5 flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      uploadAttachments.mutate(Array.from(e.target.files));
+                      e.target.value = '';
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 rounded-xl border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadAttachments.isPending}
+                >
+                  <Paperclip className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Attach</span>
+                  {(task?.attachments || []).length > 0 && (
+                    <span className="rounded-full bg-slate-100 px-1.5 py-0.2 text-[10px] font-bold text-slate-600">
+                      {task!.attachments!.length}
+                    </span>
+                  )}
                 </Button>
                 {isParent ? (
-                  <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+                  <Button
+                    size="sm"
+                    className="gap-1.5 rounded-xl bg-teal-700 text-xs font-semibold text-white hover:bg-teal-800 shadow-2xs"
+                    onClick={() => setAddOpen(true)}
+                  >
                     <Plus className="h-3.5 w-3.5" />
-                    Add a child issue
+                    <span>Add child issue</span>
                   </Button>
                 ) : null}
               </div>
             </div>
-            <Button variant="ghost" size="icon" aria-label="Close" onClick={onClose}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Close"
+              onClick={onClose}
+              className="rounded-full text-slate-500 hover:bg-slate-100"
+            >
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -386,13 +429,28 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                 <p className="text-sm text-[var(--fg-secondary)]">Loading issue…</p>
               ) : (
                 <div className="space-y-6">
-                  {/* Mobile Quick Action Bar (Top for smartphones) */}
-                  <div className="rounded-xl border border-[var(--border)] bg-white p-3.5 shadow-2xs space-y-3 lg:hidden">
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <Label className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-muted)]">Status</Label>
+                  {/* Hero Properties Matrix */}
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+                      {/* Status Card */}
+                      <div className="rounded-xl border border-slate-200/90 bg-white p-2.5 shadow-2xs transition hover:border-slate-300">
+                        <div className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          <span>Status</span>
+                          <span
+                            className={cn(
+                              'h-2 w-2 rounded-full',
+                              task?.status === 'completed'
+                                ? 'bg-emerald-500 ring-2 ring-emerald-100'
+                                : task?.status === 'review'
+                                  ? 'bg-amber-500 ring-2 ring-amber-100'
+                                  : task?.status === 'in_progress'
+                                    ? 'bg-blue-500 ring-2 ring-blue-100'
+                                    : 'bg-purple-500 ring-2 ring-purple-100'
+                            )}
+                          />
+                        </div>
                         <Select
-                          className="mt-1 h-9 text-xs font-semibold"
+                          className="h-7 w-full cursor-pointer border-0 bg-transparent p-0 text-xs font-bold text-slate-800 focus:ring-0"
                           value={task?.status || 'todo'}
                           disabled={!task}
                           onChange={(e) => {
@@ -410,10 +468,26 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                           ))}
                         </Select>
                       </div>
-                      <div>
-                        <Label className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-muted)]">Priority</Label>
+
+                      {/* Priority Card */}
+                      <div className="rounded-xl border border-slate-200/90 bg-white p-2.5 shadow-2xs transition hover:border-slate-300">
+                        <div className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          <span>Priority</span>
+                          <span
+                            className={cn(
+                              'h-2 w-2 rounded-full',
+                              task?.priority === 'urgent'
+                                ? 'bg-rose-500 ring-2 ring-rose-100'
+                                : task?.priority === 'high'
+                                  ? 'bg-orange-500 ring-2 ring-orange-100'
+                                  : task?.priority === 'medium'
+                                    ? 'bg-amber-400 ring-2 ring-amber-100'
+                                    : 'bg-slate-400 ring-2 ring-slate-100'
+                            )}
+                          />
+                        </div>
                         <Select
-                          className="mt-1 h-9 text-xs font-semibold"
+                          className="h-7 w-full cursor-pointer border-0 bg-transparent p-0 text-xs font-bold capitalize text-slate-800 focus:ring-0"
                           value={task?.priority || 'medium'}
                           disabled={!task}
                           onChange={(e) => patch.mutate({ priority: e.target.value })}
@@ -421,52 +495,74 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                           <option value="low">Low</option>
                           <option value="medium">Medium</option>
                           <option value="high">High</option>
-                          <option value="urgent">Urgent / Critical</option>
+                          <option value="urgent">Urgent</option>
                         </Select>
                       </div>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[var(--divider)] text-xs text-[var(--fg-secondary)]">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-[var(--fg-muted)]">Assignee:</span>
-                        <Avatar person={task?.assignees?.[0]} />
-                        <span className="font-medium text-[var(--fg)] truncate max-w-[130px]">
-                          {task?.assignees?.map((a) => a.name).join(', ') || 'Unassigned'}
-                        </span>
-                      </div>
-                      {task?.dueDate ? (
-                        <span className="text-[var(--fg-muted)] text-[11px]">Due {formatDate(task.dueDate)}</span>
-                      ) : null}
-                    </div>
-                  </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <Label>Start date</Label>
-                      <Input
-                        type="date"
-                        value={task.startDate?.slice(0, 10) || ''}
-                        onChange={(e) => patch.mutate({ startDate: e.target.value || null })}
-                      />
-                      {task.startedAt ? (
-                        <p className="mt-1 text-xs text-[var(--fg-muted)]">Started {formatDateTime(task.startedAt)}</p>
-                      ) : null}
+                      {/* Due Date Card */}
+                      <div className="group/due relative cursor-pointer rounded-xl border border-slate-200/90 bg-white p-2.5 shadow-2xs transition hover:border-teal-500/50">
+                        <div className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          <span>Due Date</span>
+                          <Calendar className="h-3 w-3 text-teal-600 transition-transform group-hover/due:scale-110" />
+                        </div>
+                        <div className="truncate text-xs font-bold text-slate-800">
+                          {task?.dueDate ? formatDate(task.dueDate) : <span className="font-normal text-slate-400">Set deadline</span>}
+                        </div>
+                        <input
+                          type="date"
+                          value={task?.dueDate?.slice(0, 10) || ''}
+                          onChange={(e) => patch.mutate({ dueDate: e.target.value || null })}
+                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                          aria-label="Set due date"
+                        />
+                      </div>
+
+                      {/* Assignee Card */}
+                      <div className="rounded-xl border border-slate-200/90 bg-white p-2.5 shadow-2xs transition hover:border-slate-300">
+                        <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Assignee</div>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Avatar person={task?.assignees?.[0]} size="sm" />
+                          <span className="truncate text-xs font-bold text-slate-800">
+                            {task?.assignees?.map((a) => a.name).join(', ') || 'Unassigned'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <Label>Due date</Label>
-                      <Input
-                        type="date"
-                        value={task.dueDate?.slice(0, 10) || ''}
-                        onChange={(e) => patch.mutate({ dueDate: e.target.value || null })}
-                      />
+
+                    {/* Secondary Meta Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 border border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-medium text-slate-400">Reporter:</span>
+                        <div className="flex items-center gap-1.5">
+                          <Avatar person={task?.createdBy} size="sm" />
+                          <span className="font-semibold text-slate-700">{task?.createdBy?.name || 'Workspace'}</span>
+                        </div>
+                      </div>
+                      <div className="relative flex items-center gap-1.5 cursor-pointer hover:text-teal-700 transition">
+                        <Calendar className="h-3.5 w-3.5 text-purple-600" />
+                        <span className="text-[11px] font-medium">
+                          Start: <strong className="text-slate-700">{task?.startDate ? formatDate(task.startDate) : 'Not set'}</strong>
+                        </span>
+                        <input
+                          type="date"
+                          value={task?.startDate?.slice(0, 10) || ''}
+                          onChange={(e) => patch.mutate({ startDate: e.target.value || null })}
+                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                          aria-label="Set start date"
+                        />
+                      </div>
+                      {task?.startedAt ? (
+                        <span className="text-[10px] text-slate-400">Started {formatDateTime(task.startedAt)}</span>
+                      ) : null}
                     </div>
                   </div>
 
                   <div>
-                    <Label>Description</Label>
+                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Description</Label>
                     <Textarea
-                      className="min-h-28"
+                      className="min-h-24 rounded-xl border-slate-200 bg-white p-3 text-sm text-slate-800 placeholder:text-slate-400 shadow-2xs focus:border-teal-500"
                       value={description}
-                      placeholder="Add a description…"
+                      placeholder="Add requirements, context, or notes for this task…"
                       onChange={(e) => setDescription(e.target.value)}
                       onBlur={() => {
                         if ((task.description || '') !== description) {
@@ -706,54 +802,88 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                       ) : null}
                     </div>
                   </section>
+
+                  {/* Mobile Task Details Accordion (shows only on mobile where aside is hidden) */}
+                  <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs lg:hidden">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500"
+                      onClick={() => setMobileDetailsOpen((v) => !v)}
+                    >
+                      <span className="flex items-center gap-2">
+                        <FolderKanban className="h-3.5 w-3.5 text-teal-600" />
+                        Task Metadata &amp; Details
+                      </span>
+                      <span className="text-teal-700 font-semibold">{mobileDetailsOpen ? 'Hide' : 'Show details'}</span>
+                    </button>
+                    {mobileDetailsOpen && (
+                      <div className="mt-3 space-y-2.5 border-t border-slate-100 pt-3 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Project:</span>
+                          <span className="font-semibold text-slate-800">{task?.project?.name || '—'}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Parent Task:</span>
+                          <span className="font-semibold text-slate-800">
+                            {task?.parentTask ? (
+                              <button
+                                type="button"
+                                className="text-teal-700 hover:underline"
+                                onClick={() => onOpenTask(task.parentTask!._id)}
+                              >
+                                {task.parentTask.key || task.parentTask.title}
+                              </button>
+                            ) : (
+                              'None'
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Time logged:</span>
+                          <span className="font-bold text-teal-700">{formatMinutes(task?.loggedMinutes || 0)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Labels:</span>
+                          <span className="font-medium text-slate-700">
+                            {(task?.tags || []).length
+                              ? task!.tags!.map((t) => (
+                                  <Badge key={t} tone="brand" className="mr-1">
+                                    {t}
+                                  </Badge>
+                                ))
+                              : 'None'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Details sidebar */}
-            <aside className="w-full shrink-0 border-t border-[var(--divider)] bg-[var(--bg-table-header)] lg:w-[300px] lg:overflow-y-auto lg:border-l lg:border-t-0">
-              <div className="space-y-4 p-4 sm:p-5">
+            {/* Details sidebar (Desktop only) */}
+            <aside className="hidden lg:block w-[300px] shrink-0 border-l border-slate-200 bg-[var(--bg-table-header)] overflow-y-auto">
+              <div className="space-y-4 p-5">
                 <div>
-                  <Label>Status</Label>
-                  <Select
-                    value={task?.status || 'todo'}
-                    disabled={!task}
-                    onChange={(e) => {
-                      if (e.target.value === 'completed' && isParent && !canCompleteParent) {
-                        toast.error('Only CEO can mark parent tasks Done');
-                        return;
-                      }
-                      setStatus.mutate({ id: taskId, status: e.target.value });
-                    }}
-                  >
-                    {STATUS_OPTIONS.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-
-                <div>
-                  <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--fg-muted)]">
-                    Details
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Properties
                   </div>
-                  <div className="space-y-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-white p-3 text-sm">
+                  <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3.5 text-sm shadow-2xs">
                     <DetailRow label="Assignee">
                       <div className="flex items-center gap-2">
                         <Avatar person={task?.assignees?.[0]} />
-                        <span>{task?.assignees?.map((a) => a.name).join(', ') || 'Unassigned'}</span>
+                        <span className="font-medium text-slate-800 truncate">{task?.assignees?.map((a) => a.name).join(', ') || 'Unassigned'}</span>
                       </div>
                     </DetailRow>
                     <DetailRow label="Reporter">
                       <div className="flex items-center gap-2">
                         <Avatar person={task?.createdBy} />
-                        <span>{task?.createdBy?.name || '—'}</span>
+                        <span className="font-medium text-slate-800 truncate">{task?.createdBy?.name || '—'}</span>
                       </div>
                     </DetailRow>
                     <DetailRow label="Priority">
                       <Select
-                        className="h-8"
+                        className="h-8 text-xs font-semibold"
                         value={task?.priority || 'medium'}
                         disabled={!task}
                         onChange={(e) => patch.mutate({ priority: e.target.value })}
@@ -761,7 +891,7 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                         <option value="low">Low</option>
                         <option value="medium">Medium</option>
                         <option value="high">High</option>
-                        <option value="urgent">Urgent / Critical</option>
+                        <option value="urgent">Urgent</option>
                       </Select>
                     </DetailRow>
                     <DetailRow label="Status">
@@ -774,7 +904,7 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                       {task?.parentTask ? (
                         <button
                           type="button"
-                          className="text-left font-medium text-[var(--brand)] hover:underline"
+                          className="text-left font-medium text-teal-700 hover:underline"
                           onClick={() => onOpenTask(task.parentTask!._id)}
                         >
                           {task.parentTask.key || task.parentTask.title}
@@ -793,7 +923,7 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                         : 'None'}
                     </DetailRow>
                     <DetailRow label="Time logged">
-                      <span className="font-semibold text-[var(--teal)]">
+                      <span className="font-semibold text-teal-700">
                         {formatMinutes(task?.loggedMinutes || 0)}
                       </span>
                     </DetailRow>
