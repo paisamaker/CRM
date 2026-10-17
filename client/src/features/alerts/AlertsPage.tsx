@@ -107,32 +107,32 @@ export function AlertsPage() {
         }
       />
 
-      <div className="mb-4 flex gap-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] p-1 w-fit">
+      <div className="mb-4 grid grid-cols-2 sm:flex gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg)] p-1 w-full sm:w-fit shadow-2xs">
         <button
           type="button"
           className={cn(
-            'rounded-[6px] px-3 py-1.5 text-sm font-medium transition',
+            'flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition',
             tab === 'alerts'
-              ? 'bg-[var(--bg-elevated)] text-[var(--fg)] shadow-sm'
-              : 'text-[var(--fg-muted)] hover:text-[var(--fg)]'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
           )}
           onClick={() => setTab('alerts')}
         >
-          Alerts
+          <span>System Alerts</span>
         </button>
         <button
           type="button"
           className={cn(
-            'rounded-[6px] px-3 py-1.5 text-sm font-medium transition',
+            'flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition',
             tab === 'notifications'
-              ? 'bg-[var(--bg-elevated)] text-[var(--fg)] shadow-sm'
-              : 'text-[var(--fg-muted)] hover:text-[var(--fg)]'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
           )}
           onClick={() => setTab('notifications')}
         >
-          Notifications
+          <span>Notifications</span>
           {notes?.unread ? (
-            <span className="ml-1.5 rounded-full bg-[var(--danger)] px-1.5 py-0.5 text-[10px] text-white">
+            <span className="ml-1 rounded-full bg-[var(--danger)] px-1.5 py-0.2 text-[10px] font-bold text-white">
               {notes.unread}
             </span>
           ) : null}
@@ -150,22 +150,22 @@ export function AlertsPage() {
               status: string;
               createdAt: string;
             }) => (
-              <Card key={a._id} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={statusTone(a.severity)}>{a.severity}</Badge>
-                    <Badge>{a.type.replace('_', ' ')}</Badge>
-                    <Badge tone={statusTone(a.status)}>{a.status}</Badge>
+              <Card key={a._id} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 sm:p-5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge tone={statusTone(a.severity)} className="text-[10px] uppercase font-bold">{a.severity}</Badge>
+                    <Badge className="text-[10px] capitalize">{a.type.replace('_', ' ')}</Badge>
+                    <Badge tone={statusTone(a.status)} className="text-[10px] uppercase">{a.status}</Badge>
                   </div>
-                  <div className="mt-2 text-sm font-medium">{a.message}</div>
-                  <div className="mt-1 text-xs text-[var(--fg-muted)]">{formatDate(a.createdAt)}</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-900 leading-snug">{a.message}</div>
+                  <div className="mt-1 text-xs text-slate-400">{formatDate(a.createdAt)}</div>
                 </div>
                 {a.status === 'open' ? (
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => snooze.mutate(a._id)}>
+                  <div className="flex items-center gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 [&>button]:flex-1 [&>button]:sm:flex-initial">
+                    <Button size="sm" variant="outline" className="text-xs" onClick={() => snooze.mutate(a._id)}>
                       Snooze 24h
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => resolve.mutate(a._id)}>
+                    <Button size="sm" variant="outline" className="text-xs text-teal-700 hover:bg-teal-50 hover:border-teal-300" onClick={() => resolve.mutate(a._id)}>
                       Resolve
                     </Button>
                   </div>
@@ -173,7 +173,7 @@ export function AlertsPage() {
               </Card>
             )
           )}
-          {!data?.items?.length ? <Card>No alerts yet. Run the engine or wait for scheduled jobs.</Card> : null}
+          {!data?.items?.length ? <Card className="p-8 text-center text-xs text-slate-500">No alerts yet. Run the engine or wait for scheduled jobs.</Card> : null}
         </div>
       ) : (
         <div className="space-y-2">

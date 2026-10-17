@@ -83,63 +83,72 @@ export function NotificationBell() {
       </Button>
 
       {open ? (
-        <div className="absolute right-0 top-full z-50 mt-2 w-[min(92vw,380px)] overflow-hidden rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-modal)]">
-          <div className="flex items-center justify-between border-b border-[var(--divider)] px-4 py-3">
-            <div>
-              <div className="text-sm font-semibold text-[var(--fg)]">Notifications</div>
-              <div className="text-xs text-[var(--fg-muted)]">{unread} unread</div>
+        <>
+          {/* Mobile backdrop for easy outside tap dismiss */}
+          <div
+            className="fixed inset-0 z-40 bg-slate-900/20 sm:hidden backdrop-blur-2xs"
+            onClick={() => setOpen(false)}
+          />
+          <div className="fixed inset-x-2 top-16 z-50 mt-1 flex max-h-[80dvh] flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[380px] sm:max-h-[460px]">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+              <div>
+                <div className="text-sm font-bold text-slate-900">Notifications</div>
+                <div className="text-xs text-slate-500">{unread} unread notifications</div>
+              </div>
+              {unread ? (
+                <button
+                  type="button"
+                  className="rounded-lg px-2 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-50 hover:underline transition"
+                  onClick={() => markRead.mutate({ all: true })}
+                >
+                  Mark all read
+                </button>
+              ) : null}
             </div>
-            {unread ? (
-              <button
-                type="button"
-                className="text-xs font-medium text-[var(--brand)] hover:underline"
-                onClick={() => markRead.mutate({ all: true })}
-              >
-                Mark all read
-              </button>
-            ) : null}
-          </div>
-          <div className="max-h-96 overflow-y-auto">
-            {items.map((n) => (
-              <button
-                key={n._id}
-                type="button"
-                className={cn(
-                  'block w-full border-b border-[var(--divider)] px-4 py-3 text-left transition hover:bg-[var(--brand-soft)]',
-                  !n.readAt && 'bg-[var(--bg)]'
-                )}
-                onClick={async () => {
-                  if (!n.readAt) await markRead.mutateAsync({ ids: [n._id] });
-                  setOpen(false);
-                  if (n.link) navigate(n.link);
-                  else navigate('/alerts?tab=notifications');
-                }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-[var(--fg)]">{n.title}</div>
-                    <div className="mt-0.5 line-clamp-2 text-xs text-[var(--fg-secondary)]">{n.message}</div>
-                    <div className="mt-1 text-[11px] text-[var(--fg-muted)]">{formatDateTime(n.createdAt)}</div>
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+              {items.map((n) => (
+                <button
+                  key={n._id}
+                  type="button"
+                  className={cn(
+                    'block w-full px-4 py-3 text-left transition hover:bg-slate-50 active:bg-slate-100',
+                    !n.readAt && 'bg-teal-50/30'
+                  )}
+                  onClick={async () => {
+                    if (!n.readAt) await markRead.mutateAsync({ ids: [n._id] });
+                    setOpen(false);
+                    if (n.link) navigate(n.link);
+                    else navigate('/alerts?tab=notifications');
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-xs font-bold text-slate-900">{n.title}</span>
+                        {!n.readAt ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-teal-600" /> : null}
+                      </div>
+                      <div className="mt-0.5 line-clamp-2 text-xs text-slate-600 leading-relaxed">{n.message}</div>
+                      <div className="mt-1 text-[10px] font-medium text-slate-400">{formatDateTime(n.createdAt)}</div>
+                    </div>
                   </div>
-                  {!n.readAt ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[var(--brand)]" /> : null}
-                </div>
-              </button>
-            ))}
-            {!items.length ? (
-              <div className="px-4 py-10 text-center text-sm text-[var(--fg-muted)]">No notifications yet</div>
-            ) : null}
+                </button>
+              ))}
+              {!items.length ? (
+                <div className="px-4 py-10 text-center text-xs text-slate-500">No notifications yet</div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="w-full border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 text-center text-xs font-bold text-teal-700 hover:bg-teal-50 hover:text-teal-800 transition"
+              onClick={() => {
+                setOpen(false);
+                navigate('/alerts?tab=notifications');
+              }}
+            >
+              View all notifications →
+            </button>
           </div>
-          <button
-            type="button"
-            className="w-full border-t border-[var(--divider)] px-4 py-2.5 text-center text-xs font-semibold text-[var(--brand)] hover:bg-[var(--brand-soft)]"
-            onClick={() => {
-              setOpen(false);
-              navigate('/alerts?tab=notifications');
-            }}
-          >
-            View all notifications
-          </button>
-        </div>
+        </>
       ) : null}
     </div>
   );

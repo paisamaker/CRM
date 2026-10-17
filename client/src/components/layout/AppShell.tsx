@@ -68,7 +68,7 @@ export function AppShell() {
       <Sidebar />
       <div className={cn('transition-[padding] duration-200', collapsed ? 'md:pl-[72px]' : 'md:pl-[240px]')}>
         <Topbar title={title} breadcrumb="Workspace" />
-        <main className="mx-auto w-full max-w-[1440px] px-4 py-6 md:px-6 lg:px-8">
+        <main className="mx-auto w-full max-w-[1440px] px-3 py-4 sm:px-4 sm:py-6 md:px-6 lg:px-8">
           <Outlet />
         </main>
       </div>

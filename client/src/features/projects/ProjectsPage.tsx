@@ -312,16 +312,16 @@ export function ProjectsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Sleek Enterprise Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
             <span>Workspace</span>
             <span className="text-slate-300">/</span>
             <span className="text-teal-700 font-semibold">Projects & Campaigns</span>
           </div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="mt-1 text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
             Projects &amp; Campaigns
           </h1>
           <p className="mt-0.5 text-xs text-slate-600">
@@ -329,7 +329,7 @@ export function ProjectsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           {canCreate && (
             <Button
               onClick={() => {
@@ -344,7 +344,7 @@ export function ProjectsPage() {
                 });
                 setCreateOpen(true);
               }}
-              className="bg-[#0D9488] hover:bg-[#0B7D72] text-white shadow-xs font-medium flex items-center gap-1.5"
+              className="w-full sm:w-auto justify-center bg-[#0D9488] hover:bg-[#0B7D72] text-white shadow-xs font-medium flex items-center gap-1.5"
             >
               <Plus className="h-4 w-4" />
               <span>New Project</span>
@@ -354,44 +354,44 @@ export function ProjectsPage() {
       </div>
 
       {/* KPI Metric Strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-4">
+        <div className="rounded-xl border border-slate-200/80 bg-white p-3 sm:p-4 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">Active Projects</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
-              <FolderKanban className="h-4 w-4" />
+            <span className="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Active Projects</span>
+            <div className="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-lg bg-teal-50 text-teal-700 shrink-0">
+              <FolderKanban className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-900">{metrics.active}</span>
-            <span className="text-xs text-slate-500">/ {metrics.total} total</span>
+          <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold text-slate-900">{metrics.active}</span>
+            <span className="text-[11px] text-slate-500">/ {metrics.total} total</span>
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
+        <div className="rounded-xl border border-slate-200/80 bg-white p-3 sm:p-4 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">Total Budget</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
-              <DollarSign className="h-4 w-4" />
+            <span className="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Total Budget</span>
+            <div className="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 shrink-0">
+              <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-slate-900">
+          <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
+            <span className="text-xl sm:text-2xl font-bold text-slate-900 truncate">
               {formatCurrency(metrics.totalBudget)}
             </span>
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
+        <div className="rounded-xl border border-slate-200/80 bg-white p-3 sm:p-4 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">Avg Completion</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
-              <Target className="h-4 w-4" />
+            <span className="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Avg Progress</span>
+            <div className="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700 shrink-0">
+              <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-900">{metrics.avgProgress}%</span>
-            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+          <div className="mt-1.5 sm:mt-2 flex items-baseline gap-2">
+            <span className="text-xl sm:text-2xl font-bold text-slate-900">{metrics.avgProgress}%</span>
+            <div className="h-1.5 w-12 sm:w-16 overflow-hidden rounded-full bg-slate-100">
               <div
                 className="h-full rounded-full bg-teal-600 transition-all"
                 style={{ width: `${metrics.avgProgress}%` }}
@@ -400,53 +400,55 @@ export function ProjectsPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
+        <div className="rounded-xl border border-slate-200/80 bg-white p-3 sm:p-4 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">Assigned Staff</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
-              <Users className="h-4 w-4" />
+            <span className="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Staff Active</span>
+            <div className="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-700 shrink-0">
+              <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-slate-900">{metrics.assignedMembersCount}</span>
-            <span className="text-xs text-slate-500">collaborators</span>
+          <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
+            <span className="text-xl sm:text-2xl font-bold text-slate-900">{metrics.assignedMembersCount}</span>
+            <span className="text-[11px] text-slate-500">collaborators</span>
           </div>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {/* Status Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/70 p-1 w-fit shadow-2xs">
-          {[
-            { id: 'all', label: 'All Projects', count: metrics.total },
-            { id: 'active', label: 'Active', count: metrics.active },
-            { id: 'planned', label: 'Planned', count: projectsList.filter((p) => p.status === 'planned').length },
-            { id: 'on_hold', label: 'On Hold', count: projectsList.filter((p) => p.status === 'on_hold').length },
-            { id: 'completed', label: 'Completed', count: projectsList.filter((p) => p.status === 'completed').length },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setStatusFilter(tab.id)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition',
-                statusFilter === tab.id
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              )}
-            >
-              <span>{tab.label}</span>
-              <span
+        {/* Horizontally scrollable status pills on mobile */}
+        <div className="w-full sm:w-auto overflow-x-auto pb-1 -mb-1 sm:pb-0 sm:mb-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/70 p-1 w-max shadow-2xs">
+            {[
+              { id: 'all', label: 'All Projects', count: metrics.total },
+              { id: 'active', label: 'Active', count: metrics.active },
+              { id: 'planned', label: 'Planned', count: projectsList.filter((p) => p.status === 'planned').length },
+              { id: 'on_hold', label: 'On Hold', count: projectsList.filter((p) => p.status === 'on_hold').length },
+              { id: 'completed', label: 'Completed', count: projectsList.filter((p) => p.status === 'completed').length },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setStatusFilter(tab.id)}
                 className={cn(
-                  'rounded-full px-1.5 py-0.2 text-[10px]',
-                  statusFilter === tab.id ? 'bg-slate-100 text-slate-800' : 'text-slate-400'
+                  'flex items-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition',
+                  statusFilter === tab.id
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 )}
               >
-                {tab.count}
-              </span>
-            </button>
-          ))}
+                <span>{tab.label}</span>
+                <span
+                  className={cn(
+                    'rounded-full px-1.5 py-0.2 text-[10px]',
+                    statusFilter === tab.id ? 'bg-slate-100 text-slate-800' : 'text-slate-400'
+                  )}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Search Input */}
@@ -457,7 +459,7 @@ export function ProjectsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search projects, clients, members..."
-            className="w-full rounded-xl border border-slate-200/80 bg-white pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 shadow-2xs"
+            className="w-full rounded-xl border border-slate-200/80 bg-white pl-9 pr-3 py-2 sm:py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 shadow-2xs"
           />
         </div>
       </div>
@@ -635,7 +637,7 @@ export function ProjectsPage() {
                 </div>
 
                 {/* Card Action Buttons */}
-                <div className="mt-5 flex items-center gap-2 border-t border-slate-100 pt-3.5">
+                <div className="mt-5 grid grid-cols-2 sm:flex items-center gap-2 border-t border-slate-100 pt-3.5">
                   {canAssign && (
                     <button
                       type="button"
@@ -646,29 +648,32 @@ export function ProjectsPage() {
                         setTaskTitle(`Work on ${p.name}`);
                         setCreateTasks(true);
                       }}
-                      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50/70 px-3 py-2 text-xs font-semibold text-teal-800 transition hover:bg-teal-100/80 hover:text-teal-900 shadow-2xs"
+                      className="col-span-1 sm:flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50/70 px-2.5 py-2 text-xs font-semibold text-teal-800 transition hover:bg-teal-100/80 hover:text-teal-900 shadow-2xs active:scale-[0.98]"
                     >
-                      <UserPlus className="h-3.5 w-3.5" />
-                      <span>Assign Staff</span>
+                      <UserPlus className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">Assign Staff</span>
                     </button>
                   )}
 
                   <button
                     type="button"
                     onClick={() => setFilesProject(p)}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-teal-50 hover:border-teal-200 hover:text-teal-800 shadow-2xs"
+                    className="col-span-1 sm:flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-teal-50 hover:border-teal-200 hover:text-teal-800 shadow-2xs active:scale-[0.98]"
                     title="View and upload project documents, PDFs & media"
                   >
-                    <Paperclip className="h-3.5 w-3.5 text-teal-600" />
-                    <span>Files ({(p.attachments || []).length})</span>
+                    <Paperclip className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                    <span className="truncate">Files ({(p.attachments || []).length})</span>
                   </button>
 
                   <Link
                     to={`/tasks?project=${p._id}`}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-900 shadow-2xs"
+                    className={cn(
+                      "flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-900 shadow-2xs active:scale-[0.98]",
+                      canAssign ? "col-span-2 sm:flex-1" : "col-span-1 sm:flex-1"
+                    )}
                   >
                     <span>Open Board</span>
-                    <ArrowUpRight className="h-3.5 w-3.5 text-slate-400" />
+                    <ArrowUpRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                   </Link>
                 </div>
               </div>

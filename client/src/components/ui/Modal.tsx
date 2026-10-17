@@ -75,7 +75,7 @@ export function Modal({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto',
+        'fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-6 overflow-y-auto',
         'bg-slate-950/60 backdrop-blur-xs',
         'animate-[fadeIn_150ms_ease-out]',
         overlayClassName
@@ -91,7 +91,7 @@ export function Modal({
         aria-labelledby={titleId}
         tabIndex={-1}
         className={cn(
-          'relative flex max-h-[min(90vh,860px)] w-full flex-col rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white shadow-2xl outline-hidden overflow-hidden',
+          'relative flex max-h-[92dvh] sm:max-h-[min(90vh,860px)] w-full flex-col rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white shadow-2xl outline-hidden overflow-hidden',
           'animate-[popIn_200ms_cubic-bezier(0.16,1,0.3,1)]',
           sizes[size],
           className
@@ -99,31 +99,31 @@ export function Modal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Card Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50/50 px-6 py-4 sm:px-7">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3 sm:px-7 sm:py-4">
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="text-lg font-bold tracking-tight text-slate-900">
+            <h2 id={titleId} className="text-base sm:text-lg font-bold tracking-tight text-slate-900 truncate">
               {title}
             </h2>
             {description ? (
-              <p className="mt-0.5 text-xs text-slate-500 leading-relaxed">{description}</p>
+              <p className="mt-0.5 text-xs text-slate-500 leading-relaxed line-clamp-2 sm:line-clamp-none">{description}</p>
             ) : null}
           </div>
           <button
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition"
+            className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition shrink-0"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Card Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-7">{children}</div>
+        <div className="flex-1 overflow-y-auto px-4 py-3.5 sm:px-7 sm:py-5">{children}</div>
 
         {/* Card Footer */}
         {footer ? (
-          <div className="flex flex-wrap items-center justify-end gap-2.5 border-t border-slate-100 bg-slate-50/70 px-6 py-3.5 sm:px-7">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-2.5 border-t border-slate-100 bg-slate-50/70 px-4 py-3 sm:px-7 sm:py-3.5 [&>button]:w-full [&>button]:sm:w-auto">
             {footer}
           </div>
         ) : null}

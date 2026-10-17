@@ -386,6 +386,59 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                 <p className="text-sm text-[var(--fg-secondary)]">Loading issue…</p>
               ) : (
                 <div className="space-y-6">
+                  {/* Mobile Quick Action Bar (Top for smartphones) */}
+                  <div className="rounded-xl border border-[var(--border)] bg-white p-3.5 shadow-2xs space-y-3 lg:hidden">
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <Label className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-muted)]">Status</Label>
+                        <Select
+                          className="mt-1 h-9 text-xs font-semibold"
+                          value={task?.status || 'todo'}
+                          disabled={!task}
+                          onChange={(e) => {
+                            if (e.target.value === 'completed' && isParent && !canCompleteParent) {
+                              toast.error('Only CEO can mark parent tasks Done');
+                              return;
+                            }
+                            setStatus.mutate({ id: taskId, status: e.target.value });
+                          }}
+                        >
+                          {STATUS_OPTIONS.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-muted)]">Priority</Label>
+                        <Select
+                          className="mt-1 h-9 text-xs font-semibold"
+                          value={task?.priority || 'medium'}
+                          disabled={!task}
+                          onChange={(e) => patch.mutate({ priority: e.target.value })}
+                        >
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                          <option value="urgent">Urgent / Critical</option>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[var(--divider)] text-xs text-[var(--fg-secondary)]">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[var(--fg-muted)]">Assignee:</span>
+                        <Avatar person={task?.assignees?.[0]} />
+                        <span className="font-medium text-[var(--fg)] truncate max-w-[130px]">
+                          {task?.assignees?.map((a) => a.name).join(', ') || 'Unassigned'}
+                        </span>
+                      </div>
+                      {task?.dueDate ? (
+                        <span className="text-[var(--fg-muted)] text-[11px]">Due {formatDate(task.dueDate)}</span>
+                      ) : null}
+                    </div>
+                  </div>
+
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <Label>Start date</Label>
@@ -445,7 +498,7 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                       </div>
 
                       {!subsCollapsed ? (
-                        <div className="px-4 py-3">
+                        <div className="px-3 py-3 sm:px-4">
                           {stats.total > 0 ? (
                             <div className="mb-3">
                               <div className="mb-1 flex items-center justify-between text-xs text-[var(--fg-secondary)]">
@@ -463,64 +516,73 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                             </div>
                           ) : null}
 
-                          <div className="space-y-1">
+                          <div className="space-y-2">
                             {(task.subtasks || []).map((s) => {
                               const assignee = s.assignees?.[0];
                               const done = s.status === 'completed';
                               return (
                                 <div
                                   key={s._id}
-                                  className="group flex items-center gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-white px-3 py-2.5 transition hover:border-[var(--brand)]/35"
+                                  className="group flex flex-col gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-white p-2.5 transition hover:border-[var(--brand)]/35 sm:flex-row sm:items-center sm:gap-3 sm:px-3 sm:py-2.5"
                                 >
-                                  <input
-                                    type="checkbox"
-                                    className="accent-[var(--brand)]"
-                                    checked={done}
-                                    onChange={() =>
-                                      setStatus.mutate({
-                                        id: s._id,
-                                        status: done ? 'todo' : 'completed',
-                                      })
-                                    }
-                                  />
-                                  <button
-                                    type="button"
-                                    className="min-w-0 flex-1 text-left"
-                                    onClick={() => onOpenTask(s._id)}
-                                  >
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      {s.key ? (
-                                        <span className="font-mono text-[11px] font-semibold text-[var(--fg-muted)]">
-                                          {s.key}
+                                  <div className="flex min-w-0 flex-1 items-start gap-2.5 sm:items-center">
+                                    <input
+                                      type="checkbox"
+                                      className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand)] sm:mt-0"
+                                      checked={done}
+                                      onChange={() =>
+                                        setStatus.mutate({
+                                          id: s._id,
+                                          status: done ? 'todo' : 'completed',
+                                        })
+                                      }
+                                    />
+                                    <button
+                                      type="button"
+                                      className="min-w-0 flex-1 text-left"
+                                      onClick={() => onOpenTask(s._id)}
+                                    >
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {s.key ? (
+                                          <span className="font-mono text-[11px] font-semibold text-[var(--fg-muted)]">
+                                            {s.key}
+                                          </span>
+                                        ) : null}
+                                        <span
+                                          className={cn(
+                                            'break-words text-sm font-medium text-[var(--fg)]',
+                                            done && 'text-[var(--fg-muted)] line-through'
+                                          )}
+                                        >
+                                          {s.title}
                                         </span>
-                                      ) : null}
-                                      <span
-                                        className={cn(
-                                          'text-sm font-medium text-[var(--fg)]',
-                                          done && 'text-[var(--fg-muted)] line-through'
-                                        )}
-                                      >
-                                        {s.title}
+                                      </div>
+                                      <div className="mt-0.5 text-[11px] text-[var(--fg-muted)]">
+                                        {assignee?.name ? `Assigned to ${assignee.name}` : 'Unassigned'}
+                                        {s.dueDate ? ` · Due ${formatDate(s.dueDate)}` : ''}
+                                      </div>
+                                    </button>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-2 pl-6 sm:justify-end sm:pl-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <Avatar person={assignee} />
+                                      <span className="max-w-[100px] truncate text-xs font-medium text-[var(--fg)] sm:hidden">
+                                        {assignee?.name || 'Unassigned'}
                                       </span>
                                     </div>
-                                    <div className="mt-0.5 text-[11px] text-[var(--fg-muted)]">
-                                      {assignee?.name ? `Assigned to ${assignee.name}` : 'Unassigned'}
-                                      {s.dueDate ? ` · Due ${formatDate(s.dueDate)}` : ''}
-                                    </div>
-                                  </button>
-                                  <Avatar person={assignee} />
-                                  <Select
-                                    className="h-8 w-[130px] text-xs"
-                                    value={s.status}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={(e) => setStatus.mutate({ id: s._id, status: e.target.value })}
-                                  >
-                                    {STATUS_OPTIONS.map((o) => (
-                                      <option key={o.id} value={o.id}>
-                                        {o.label}
-                                      </option>
-                                    ))}
-                                  </Select>
+                                    <Select
+                                      className="h-8 w-28 shrink-0 text-xs sm:w-[130px]"
+                                      value={s.status}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => setStatus.mutate({ id: s._id, status: e.target.value })}
+                                    >
+                                      {STATUS_OPTIONS.map((o) => (
+                                        <option key={o.id} value={o.id}>
+                                          {o.label}
+                                        </option>
+                                      ))}
+                                    </Select>
+                                  </div>
                                 </div>
                               );
                             })}

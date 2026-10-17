@@ -185,6 +185,7 @@ export function TasksPage() {
     updateStatus.mutate({ id: taskId, status });
   }
 
+  const [mobileColumn, setMobileColumn] = useState<string>('all');
   const selectedProjectName = projects?.find((p: { _id: string }) => p._id === projectFilter)?.name;
 
   return (
@@ -193,7 +194,7 @@ export function TasksPage() {
         title="Tasks & Workflow"
         description="Jira-style project board with issue details, subtasks, dates, and activity"
         actions={
-          <>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
             <Select
               value={projectFilter}
               onChange={(e) => {
@@ -201,7 +202,7 @@ export function TasksPage() {
                 if (v) setParams({ project: v });
                 else setParams({});
               }}
-              className="w-52"
+              className="w-full sm:w-52"
             >
               <option value="">All projects</option>
               {(projects || []).map((p: { _id: string; name: string }) => (
@@ -210,93 +211,139 @@ export function TasksPage() {
                 </option>
               ))}
             </Select>
-            <div className="flex rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] p-1">
-              <button
-                type="button"
-                className={cn(
-                  'rounded-[7px] px-3 py-1.5 text-xs font-semibold',
-                  view === 'board' ? 'bg-[var(--brand-soft)] text-[var(--brand)]' : 'text-[var(--fg-secondary)]'
-                )}
-                onClick={() => setView('board')}
-              >
-                Board
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  'rounded-[7px] px-3 py-1.5 text-xs font-semibold',
-                  view === 'table' ? 'bg-[var(--brand-soft)] text-[var(--brand)]' : 'text-[var(--fg-secondary)]'
-                )}
-                onClick={() => setView('table')}
-              >
-                Table
-              </button>
+            <div className="flex items-center gap-2 justify-between sm:justify-start">
+              <div className="flex rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-1">
+                <button
+                  type="button"
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 text-xs font-semibold',
+                    view === 'board' ? 'bg-[var(--brand-soft)] text-[var(--brand)] shadow-2xs' : 'text-[var(--fg-secondary)]'
+                  )}
+                  onClick={() => setView('board')}
+                >
+                  Board
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 text-xs font-semibold',
+                    view === 'table' ? 'bg-[var(--brand-soft)] text-[var(--brand)] shadow-2xs' : 'text-[var(--fg-secondary)]'
+                  )}
+                  onClick={() => setView('table')}
+                >
+                  Table
+                </button>
+              </div>
+              <Button onClick={() => setOpen(true)} className="flex-1 sm:flex-initial justify-center bg-[#0D9488] hover:bg-[#0B7D72] text-white">
+                <Plus className="h-4 w-4" />
+                <span>Create Task</span>
+              </Button>
             </div>
-            <Button onClick={() => setOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Create
-            </Button>
-          </>
+          </div>
         }
       />
 
       {selectedProjectName ? (
-        <div className="mb-4 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--brand-soft)] px-4 py-3 text-sm text-[var(--brand-deep)]">
-          Board · <span className="font-semibold">{selectedProjectName}</span> — open a card for issue details and
-          subtasks.
+        <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50/70 px-4 py-2.5 text-xs font-medium text-teal-900">
+          Project Workspace: <span className="font-bold">{selectedProjectName}</span> — tap any task card to manage workflow details &amp; files.
         </div>
       ) : null}
 
-      {isLoading ? <Card>Loading board…</Card> : null}
+      {isLoading ? <Card className="p-8 text-center text-xs text-slate-500">Loading workflow board…</Card> : null}
 
       {view === 'board' && data ? (
-        <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={onDragEnd}>
-          <div className="grid gap-3 xl:grid-cols-4">
-            {columns.map((col) => {
-              const borderAccent =
-                col.id === 'todo'
-                  ? 'border-t-3 border-t-[var(--purple)]'
-                  : col.id === 'in_progress'
-                    ? 'border-t-3 border-t-blue-500'
-                    : col.id === 'review'
-                      ? 'border-t-3 border-t-[var(--orange)]'
-                      : 'border-t-3 border-t-[var(--teal)]';
+        <>
+          {/* Mobile Column Switcher (visible on phone/tablet screens) */}
+          <div className="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden xl:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileColumn('all')}
+              className={cn(
+                'rounded-xl px-3 py-1.5 text-xs font-bold whitespace-nowrap transition shadow-2xs',
+                mobileColumn === 'all'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-white border border-slate-200 text-slate-600'
+              )}
+            >
+              All Columns ({Object.values(data).reduce((acc, col) => acc + (col?.length || 0), 0)})
+            </button>
+            {columns.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setMobileColumn(c.id)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold whitespace-nowrap transition shadow-2xs',
+                  mobileColumn === c.id
+                    ? 'bg-teal-700 text-white'
+                    : 'bg-white border border-slate-200 text-slate-600'
+                )}
+              >
+                <span>{c.label}</span>
+                <span className={cn(
+                  'rounded-full px-1.5 py-0.2 text-[10px]',
+                  mobileColumn === c.id ? 'bg-teal-800 text-teal-100' : 'bg-slate-100 text-slate-600'
+                )}>
+                  {(data[c.id] || []).length}
+                </span>
+              </button>
+            ))}
+          </div>
 
-              const tone =
-                col.id === 'todo'
-                  ? 'purple'
-                  : col.id === 'in_progress'
-                    ? 'info'
-                    : col.id === 'review'
-                      ? 'orange'
-                      : 'teal';
+          <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={onDragEnd}>
+            <div className={cn(
+              mobileColumn === 'all'
+                ? 'flex overflow-x-auto snap-x snap-mandatory pb-4 gap-3 xl:grid xl:grid-cols-4 xl:overflow-visible xl:pb-0 [scrollbar-width:thin]'
+                : 'grid gap-3 xl:grid-cols-4'
+            )}>
+              {columns
+                .filter((col) => mobileColumn === 'all' || mobileColumn === col.id)
+                .map((col) => {
+                const borderAccent =
+                  col.id === 'todo'
+                    ? 'border-t-3 border-t-[var(--purple)]'
+                    : col.id === 'in_progress'
+                      ? 'border-t-3 border-t-blue-500'
+                      : col.id === 'review'
+                        ? 'border-t-3 border-t-[var(--orange)]'
+                        : 'border-t-3 border-t-[var(--teal)]';
 
-              return (
-                <div
-                  key={col.id}
-                  id={col.id}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    const id = e.dataTransfer.getData('text/plain');
-                    if (!id) return;
-                    if (col.id === 'completed' && role !== 'ceo') {
-                      toast.error('Only CEO can mark parent tasks Done');
-                      return;
-                    }
-                    updateStatus.mutate({ id, status: col.id });
-                  }}
-                  className={cn(
-                    'rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-xs',
-                    borderAccent
-                  )}
-                >
-                  <div className="mb-2.5 flex items-center justify-between px-1">
-                    <h3 className="text-xs font-bold uppercase tracking-wide text-[var(--fg)]">
-                      {col.label}
-                    </h3>
-                    <Badge tone={tone} className="text-[10px] !px-1.5 !py-0">{(data[col.id] || []).length}</Badge>
-                  </div>
-                  <div className="min-h-28 space-y-2">
+                const tone =
+                  col.id === 'todo'
+                    ? 'purple'
+                    : col.id === 'in_progress'
+                      ? 'info'
+                      : col.id === 'review'
+                        ? 'orange'
+                        : 'teal';
+
+                return (
+                  <div
+                    key={col.id}
+                    id={col.id}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      const id = e.dataTransfer.getData('text/plain');
+                      if (!id) return;
+                      if (col.id === 'completed' && role !== 'ceo') {
+                        toast.error('Only CEO can mark parent tasks Done');
+                        return;
+                      }
+                      updateStatus.mutate({ id, status: col.id });
+                    }}
+                    className={cn(
+                      'rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-xs',
+                      borderAccent,
+                      mobileColumn === 'all' ? 'w-[84vw] sm:w-[320px] xl:w-auto shrink-0 snap-center xl:shrink xl:snap-none' : 'w-full'
+                    )}
+                  >
+                    <div className="mb-2.5 flex items-center justify-between px-1">
+                      <h3 className="text-xs font-bold uppercase tracking-wide text-[var(--fg)]">
+                        {col.label}
+                      </h3>
+                      <Badge tone={tone} className="text-[10px] !px-1.5 !py-0">{(data[col.id] || []).length}</Badge>
+                    </div>
+                    <div className="min-h-28 space-y-2">
                     {(data[col.id] || []).map((task) => {
                       const overdue = isOverdue(task.dueDate, task.status);
                       const subs = task.subtasks || { total: 0, done: 0 };
@@ -417,6 +464,7 @@ export function TasksPage() {
             />
           ) : null}
         </DndContext>
+        </>
       ) : null}
 
       {view === 'table' && data ? (

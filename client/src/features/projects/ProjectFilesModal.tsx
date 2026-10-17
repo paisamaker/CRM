@@ -165,75 +165,77 @@ export function ProjectFilesModal({
 
           {/* Filter Bar & Tabs */}
           <div className="space-y-2.5 pt-1">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               {/* Tab Pills */}
-              <div className="flex flex-wrap items-center gap-1 rounded-xl bg-slate-100 p-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('all')}
-                  className={`rounded-lg px-2.5 py-1 font-semibold transition ${
-                    activeTab === 'all'
-                      ? 'bg-white text-slate-900 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  All Content ({allFiles.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('project')}
-                  className={`rounded-lg px-2.5 py-1 font-semibold transition ${
-                    activeTab === 'project'
-                      ? 'bg-white text-teal-800 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Project Docs ({projectAttachments.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('workflow')}
-                  className={`rounded-lg px-2.5 py-1 font-semibold transition ${
-                    activeTab === 'workflow'
-                      ? 'bg-white text-teal-800 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Workflow Tasks ({workflowAttachments.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('images')}
-                  className={`rounded-lg px-2.5 py-1 font-semibold transition ${
-                    activeTab === 'images'
-                      ? 'bg-white text-teal-800 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Images ({allFiles.filter((f) => isImageFile(f.mime || f.name)).length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('pdfs')}
-                  className={`rounded-lg px-2.5 py-1 font-semibold transition ${
-                    activeTab === 'pdfs'
-                      ? 'bg-white text-rose-700 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  PDFs ({allFiles.filter((f) => isPdfFile(f.mime || f.name)).length})
-                </button>
+              <div className="w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 text-xs w-max">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('all')}
+                    className={`rounded-lg px-2.5 py-1 font-semibold whitespace-nowrap transition ${
+                      activeTab === 'all'
+                        ? 'bg-white text-slate-900 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    All Content ({allFiles.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('project')}
+                    className={`rounded-lg px-2.5 py-1 font-semibold whitespace-nowrap transition ${
+                      activeTab === 'project'
+                        ? 'bg-white text-teal-800 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Project Docs ({projectAttachments.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('workflow')}
+                    className={`rounded-lg px-2.5 py-1 font-semibold whitespace-nowrap transition ${
+                      activeTab === 'workflow'
+                        ? 'bg-white text-teal-800 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Workflow Tasks ({workflowAttachments.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('images')}
+                    className={`rounded-lg px-2.5 py-1 font-semibold whitespace-nowrap transition ${
+                      activeTab === 'images'
+                        ? 'bg-white text-teal-800 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Images ({allFiles.filter((f) => isImageFile(f.mime || f.name)).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('pdfs')}
+                    className={`rounded-lg px-2.5 py-1 font-semibold whitespace-nowrap transition ${
+                      activeTab === 'pdfs'
+                        ? 'bg-white text-rose-700 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    PDFs ({allFiles.filter((f) => isPdfFile(f.mime || f.name)).length})
+                  </button>
+                </div>
               </div>
 
               {/* Search input */}
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Filter files..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="h-8 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-800 placeholder-slate-400 focus:border-teal-500 focus:outline-hidden"
+                  className="w-full sm:w-48 h-8 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-800 placeholder-slate-400 focus:border-teal-500 focus:outline-hidden"
                 />
               </div>
             </div>
