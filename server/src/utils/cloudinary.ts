@@ -75,3 +75,34 @@ export async function uploadImageToCloudinary(
     return null;
   }
 }
+
+/**
+ * Upload a financial document (image or PDF) from disk path to Cloudinary.
+ * Preserves original resolution and handles both images and PDFs.
+ * Returns { secure_url, public_id } or null if Cloudinary is not configured or fails.
+ */
+export async function uploadDocumentToCloudinary(
+  filePath: string,
+  folder = 'starmedia/financial-docs'
+): Promise<{ secure_url: string; public_id: string } | null> {
+  try {
+    const ready = await initCloudinary();
+    if (!ready) return null;
+
+    const result = await cloudinary.uploader.upload(filePath, {
+      folder,
+      resource_type: 'auto',
+      use_filename: true,
+      unique_filename: true,
+    });
+
+    return {
+      secure_url: result.secure_url,
+      public_id: result.public_id,
+    };
+  } catch (err) {
+    console.warn('[Cloudinary] Document upload failed, falling back to local file storage:', err);
+    return null;
+  }
+}
+

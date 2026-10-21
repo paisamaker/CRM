@@ -1,0 +1,933 @@
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { env } from '../../config/env.js';
+import { uploadDocumentToCloudinary } from '../../utils/cloudinary.js';
+import { publicUploadPath } from '../../middleware/upload.js';
+import { ScannedDocument, type IExtractedFinancialData } from '../../models/ScannedDocument.js';
+import { Transaction, EXPENSE_CATEGORIES, REVENUE_CATEGORIES } from '../../models/Transaction.js';
+import { Bill } from '../../models/Bill.js';
+import { AppError } from '../../utils/AppError.js';
+import { createWorker } from 'tesseract.js';
+
+export interface DuplicateMatchInfo {
+  id: string;
+  type: 'transaction' | 'bill' | 'scan';
+  title?: string;
+  billNumber?: string;
+  invoiceNumber?: string;
+  amount?: number;
+  date?: string;
+  vendorName?: string;
+}
+
+export interface ScanResult {
+  scanId: string;
+  fileName: string;
+  fileUrl: string;
+  fileSize: number;
+  mimeType: string;
+  documentHash: string;
+  extractedData: IExtractedFinancialData;
+  isDuplicate: boolean;
+  duplicateMatch?: DuplicateMatchInfo;
+  duplicateWarning?: string;
+  provider: 'gemini' | 'openai' | 'anthropic' | 'tesseract' | 'pdf-parse' | 'heuristic';
+}
+
+/**
+ * Compute SHA-256 hash of file buffer for idempotency and duplicate detection.
+ */
+export function computeFileHash(buffer: Buffer): string {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+/**
+ * Check if the document has already been processed or matches an existing transaction or bill.
+ */
+export async function checkDuplicateDocument(
+  hash: string,
+  invoiceNumber?: string | null,
+  amount?: number | null,
+  vendorName?: string | null
+): Promise<{ isDuplicate: boolean; duplicateMatch?: DuplicateMatchInfo; warning?: string }> {
+  // 1. Direct Content Hash Match in Transactions
+  const existingTxByHash = await Transaction.findOne({
+    $or: [{ 'attachment.hash': hash }, { documentHash: hash }],
+  }).select('_id title invoiceNumber amount date type category').lean();
+
+  if (existingTxByHash) {
+    return {
+      isDuplicate: true,
+      duplicateMatch: {
+        id: existingTxByHash._id.toString(),
+        type: 'transaction',
+        title: existingTxByHash.title,
+        invoiceNumber: existingTxByHash.invoiceNumber,
+        amount: existingTxByHash.amount,
+        date: existingTxByHash.date?.toISOString().slice(0, 10),
+      },
+      warning: `This exact document was already recorded as a transaction (${existingTxByHash.title || 'Transaction'} - ₹${existingTxByHash.amount}).`,
+    };
+  }
+
+  // 2. Direct Content Hash Match in Bills
+  const existingBillByHash = await Bill.findOne({
+    $or: [{ 'attachment.hash': hash }, { documentHash: hash }],
+  }).select('_id title billNumber totalAmount billDate partyName').lean();
+
+  if (existingBillByHash) {
+    return {
+      isDuplicate: true,
+      duplicateMatch: {
+        id: existingBillByHash._id.toString(),
+        type: 'bill',
+        title: existingBillByHash.title,
+        billNumber: existingBillByHash.billNumber,
+        amount: existingBillByHash.totalAmount,
+        date: existingBillByHash.billDate?.toISOString().slice(0, 10),
+        vendorName: existingBillByHash.partyName,
+      },
+      warning: `This exact document was already uploaded as Bill #${existingBillByHash.billNumber} (${existingBillByHash.partyName} - ₹${existingBillByHash.totalAmount}).`,
+    };
+  }
+
+  // 3. Invoice Number & Amount Match (logical duplicate check)
+  if (invoiceNumber && invoiceNumber.trim().length >= 3 && amount && amount > 0) {
+    const cleanInv = invoiceNumber.trim();
+    const existingTxByInv = await Transaction.findOne({
+      invoiceNumber: { $regex: new RegExp(`^${cleanInv.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      amount: { $gte: amount - 1, $lte: amount + 1 },
+    }).select('_id title invoiceNumber amount date').lean();
+
+    if (existingTxByInv) {
+      return {
+        isDuplicate: true,
+        duplicateMatch: {
+          id: existingTxByInv._id.toString(),
+          type: 'transaction',
+          title: existingTxByInv.title,
+          invoiceNumber: existingTxByInv.invoiceNumber,
+          amount: existingTxByInv.amount,
+          date: existingTxByInv.date?.toISOString().slice(0, 10),
+        },
+        warning: `An existing transaction matches Invoice #${invoiceNumber} for ₹${amount}.`,
+      };
+    }
+
+    const existingBillByInv = await Bill.findOne({
+      billNumber: { $regex: new RegExp(`^${cleanInv.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      totalAmount: { $gte: amount - 1, $lte: amount + 1 },
+    }).select('_id title billNumber totalAmount billDate partyName').lean();
+
+    if (existingBillByInv) {
+      return {
+        isDuplicate: true,
+        duplicateMatch: {
+          id: existingBillByInv._id.toString(),
+          type: 'bill',
+          title: existingBillByInv.title,
+          billNumber: existingBillByInv.billNumber,
+          amount: existingBillByInv.totalAmount,
+          date: existingBillByInv.billDate?.toISOString().slice(0, 10),
+          vendorName: existingBillByInv.partyName,
+        },
+        warning: `An existing bill matches Invoice #${invoiceNumber} for ₹${amount}.`,
+      };
+    }
+  }
+
+  return { isDuplicate: false };
+}
+
+/**
+ * Extract plain text from digital PDFs using pdf-parse.
+ */
+export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
+  let parser: any = null;
+  try {
+    const pdfMod: any = await import('pdf-parse');
+    if (pdfMod.PDFParse) {
+      parser = new pdfMod.PDFParse({ data: buffer });
+      const textResult = await parser.getText();
+      return textResult.text || '';
+    }
+    if (typeof pdfMod.default === 'function') {
+      const res = await pdfMod.default(buffer);
+      return res.text || '';
+    }
+    return '';
+  } catch (err) {
+    console.warn('[DocumentScanner] PDF text extraction failed:', err);
+    return '';
+  } finally {
+    if (parser && typeof parser.destroy === 'function') {
+      await parser.destroy().catch(() => null);
+    }
+  }
+}
+
+/**
+ * Extract text from images using tesseract.js worker.
+ */
+export async function extractTextFromImageOCR(filePathOrBuffer: string | Buffer): Promise<string> {
+  let worker;
+  try {
+    worker = await createWorker('eng');
+    const { data } = await worker.recognize(filePathOrBuffer);
+    return data.text || '';
+  } catch (err) {
+    console.warn('[DocumentScanner] Tesseract OCR failed:', err);
+    return '';
+  } finally {
+    if (worker) {
+      await worker.terminate().catch(() => null);
+    }
+  }
+}
+
+/**
+ * Parse raw extracted text using comprehensive financial regex and heuristics.
+ */
+export function parseFinancialTextWithHeuristics(rawText: string, fileName?: string): IExtractedFinancialData {
+  const text = rawText || '';
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const uncertainFields: string[] = [];
+  const confidence: Record<string, 'high' | 'medium' | 'low'> = {};
+
+  // 1. GSTIN Patterns (Indian standard 15-character format)
+  const gstinRegex = /\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})\b/gi;
+  const gstins = [...text.matchAll(gstinRegex)].map((m) => m[1].toUpperCase());
+  const vendorGstin = gstins[0] || null;
+  const customerGstin = gstins.length > 1 ? gstins[1] : null;
+
+  // 2. Invoice / Bill / Receipt Number
+  const invoiceNumPatterns = [
+    /(?:inv\s*(?:no|number|#)|invoice\s*(?:no|number|#)|bill\s*(?:no|number|#)|receipt\s*(?:no|number|#)|tax\s*invoice\s*(?:no|number|#))[:.\s#-]*([A-Za-z0-9\-_/]{2,30})/i,
+    /(?:invoice|inv|bill|receipt|ref)\s*[:#]\s*([A-Za-z0-9\-_/]{2,30})/i,
+    /#\s*([A-Za-z0-9\-_/]{3,20})/i,
+  ];
+
+  let invoiceNumber: string | null = null;
+  for (const pat of invoiceNumPatterns) {
+    const match = text.match(pat);
+    if (match && match[1] && !/^(date|total|amount|inr|rs|gst|tax|gstin|invoice|receipt|bill|number|no|details)$/i.test(match[1])) {
+      invoiceNumber = match[1].trim();
+      break;
+    }
+  }
+
+  // 3. Dates (Document Date & Due Date)
+  const datePatterns = [
+    // 14/10/2026 or 14-10-2026 or 14.10.2026
+    /\b(0?[1-9]|[12][0-9]|3[01])[/\-.](0?[1-9]|1[012])[/\-.](20\d\d)\b/,
+    // 2026-10-14
+    /\b(20\d\d)[/\-.](0?[1-9]|1[012])[/\-.](0?[1-9]|[12][0-9]|3[01])\b/,
+    // 14 Oct 2026 or 14 October 2026
+    /\b(0?[1-9]|[12][0-9]|3[01])\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(20\d\d)\b/i,
+  ];
+
+  function parseDateString(dStr: string): string | null {
+    try {
+      const trimmed = dStr.trim();
+      const dmy = trimmed.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+      if (dmy) {
+        const day = parseInt(dmy[1], 10);
+        const month = parseInt(dmy[2], 10) - 1;
+        const year = parseInt(dmy[3], 10);
+        const d = new Date(year, month, day);
+        if (!isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getFullYear() <= 2040) {
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          return `${yyyy}-${mm}-${dd}`;
+        }
+      }
+      const d = new Date(trimmed);
+      if (!isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getFullYear() <= 2040) {
+        return d.toISOString().slice(0, 10);
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  let documentDate: string | null = null;
+  let dueDate: string | null = null;
+
+  for (const line of lines) {
+    if (/(?:due\s*date|payment\s*due|pay\s*by)[:.\s]/i.test(line)) {
+      for (const pat of datePatterns) {
+        const m = line.match(pat);
+        if (m) {
+          const parsed = parseDateString(m[0]);
+          if (parsed) {
+            dueDate = parsed;
+            break;
+          }
+        }
+      }
+    } else if (/(?:invoice\s*date|bill\s*date|date\s*of\s*issue|dated|date)[:.\s]/i.test(line)) {
+      if (!documentDate) {
+        for (const pat of datePatterns) {
+          const m = line.match(pat);
+          if (m) {
+            const parsed = parseDateString(m[0]);
+            if (parsed) {
+              documentDate = parsed;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback to first valid date in text if document date not found
+  if (!documentDate) {
+    for (const pat of datePatterns) {
+      const m = text.match(pat);
+      if (m) {
+        const parsed = parseDateString(m[0]);
+        if (parsed) {
+          documentDate = parsed;
+          break;
+        }
+      }
+    }
+  }
+
+  // 4. Financial Amounts
+  function cleanAmount(raw: string): number | null {
+    if (!raw) return null;
+    const sanitized = raw.replace(/[^\d.]/g, '');
+    const num = parseFloat(sanitized);
+    return isNaN(num) || num < 0 ? null : Math.round(num * 100) / 100;
+  }
+
+  let grandTotal: number | null = null;
+  let subtotal: number | null = null;
+  let totalTax: number | null = null;
+  let cgst: number | null = null;
+  let sgst: number | null = null;
+  let igst: number | null = null;
+  let discount: number | null = null;
+  let amountPaid: number | null = null;
+  let outstandingAmount: number | null = null;
+
+  const totalMatches: number[] = [];
+
+  for (const line of lines) {
+    // Grand Total / Total Amount
+    if (/(?:grand\s*total|total\s*amount|invoice\s*total|net\s*payable|amount\s*payable|total\s*value)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
+      const match = line.match(/(?:grand\s*total|total\s*amount|invoice\s*total|net\s*payable|amount\s*payable|total\s*value)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+      if (match && match[1]) {
+        const val = cleanAmount(match[1]);
+        if (val !== null && val > 0) totalMatches.push(val);
+      }
+    }
+
+    // Subtotal
+    if (/(?:sub\s*total|taxable\s*value|taxable\s*amount|subtotal)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
+      const match = line.match(/(?:sub\s*total|taxable\s*value|taxable\s*amount|subtotal)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+      if (match && match[1]) {
+        subtotal = cleanAmount(match[1]);
+      }
+    }
+
+    // CGST
+    if (/(?:cgst|central\s*tax)(?:[^(:\n]*\([^)]*\))?[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
+      const match = line.match(/(?:cgst|central\s*tax)(?:[^(:\n]*\([^)]*\))?[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+      if (match && match[1]) cgst = cleanAmount(match[1]);
+    }
+
+    // SGST
+    if (/(?:sgst|state\s*tax)(?:[^(:\n]*\([^)]*\))?[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
+      const match = line.match(/(?:sgst|state\s*tax)(?:[^(:\n]*\([^)]*\))?[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+      if (match && match[1]) sgst = cleanAmount(match[1]);
+    }
+
+    // IGST
+    if (/(?:igst|integrated\s*tax)(?:[^(:\n]*\([^)]*\))?[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
+      const match = line.match(/(?:igst|integrated\s*tax)(?:[^(:\n]*\([^)]*\))?[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+      if (match && match[1]) igst = cleanAmount(match[1]);
+    }
+
+    // Discount
+    if (/(?:discount|less\s*discount)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
+      const match = line.match(/(?:discount|less\s*discount)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+      if (match && match[1]) discount = cleanAmount(match[1]);
+    }
+
+    // Amount Paid
+    if (/(?:amount\s*paid|paid\s*amount|received)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
+      const match = line.match(/(?:amount\s*paid|paid\s*amount|received)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+      if (match && match[1]) amountPaid = cleanAmount(match[1]);
+    }
+
+    // Balance / Outstanding
+    if (/(?:balance\s*due|amount\s*due|outstanding)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
+      const match = line.match(/(?:balance\s*due|amount\s*due|outstanding)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+      if (match && match[1]) outstandingAmount = cleanAmount(match[1]);
+    }
+  }
+
+  // Calculate Tax Total
+  if (cgst || sgst || igst) {
+    totalTax = Math.round(((cgst || 0) + (sgst || 0) + (igst || 0)) * 100) / 100;
+  }
+
+  if (totalMatches.length > 0) {
+    grandTotal = totalMatches[totalMatches.length - 1]; // usually the final total line
+  } else if (subtotal && totalTax) {
+    grandTotal = Math.round((subtotal + totalTax - (discount || 0)) * 100) / 100;
+  } else if (amountPaid) {
+    grandTotal = amountPaid;
+  } else {
+    // Search general Total: ₹XXX
+    const genericTotal = text.match(/(?:total|amount)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+    if (genericTotal && genericTotal[1]) {
+      grandTotal = cleanAmount(genericTotal[1]);
+    }
+  }
+
+  // 5. Vendor Name & Party Details
+  let vendorName: string | null = null;
+  // Common vendors
+  const knownVendors = [
+    'Amazon Web Services',
+    'AWS',
+    'Google Cloud',
+    'Google Workspace',
+    'Microsoft',
+    'Adobe',
+    'Meta Platforms',
+    'Facebook Ads',
+    'GoDaddy',
+    'Namecheap',
+    'Vercel',
+    'Render',
+    'Cloudflare',
+    'MongoDB',
+    'Zoho',
+    'Slack',
+    'Canva',
+    'Figma',
+    'OpenAI',
+    'Airtel',
+    'Jio',
+    'Swiggy',
+    'Zomato',
+    'Uber',
+    'Ola',
+  ];
+
+  for (const v of knownVendors) {
+    if (new RegExp(`\\b${v}\\b`, 'i').test(text)) {
+      vendorName = v;
+      break;
+    }
+  }
+
+  if (!vendorName && lines.length > 0) {
+    // Top 3 non-empty lines usually have company name
+    const candidateLines = lines.slice(0, 4).filter(
+      (l) => !/(?:tax\s*invoice|invoice|bill|receipt|gstin|phone|email|date)/i.test(l) && l.length > 3 && l.length < 50
+    );
+    if (candidateLines.length > 0) {
+      vendorName = candidateLines[0].replace(/[^\w\s.,&'-]/g, '').trim();
+    }
+  }
+
+  // 6. Document Type & Classification
+  let documentType: IExtractedFinancialData['documentType'] = 'bill';
+  let suggestedType: 'expense' | 'revenue' = 'expense';
+  let suggestedCategory = 'Office Expenses';
+
+  const lower = text.toLowerCase();
+  if (lower.includes('credit note')) {
+    documentType = 'credit_note';
+    suggestedType = 'revenue';
+  } else if (lower.includes('debit note')) {
+    documentType = 'debit_note';
+    suggestedType = 'expense';
+  } else if (lower.includes('salary') || lower.includes('payslip') || lower.includes('stipend')) {
+    documentType = 'salary_slip';
+    suggestedCategory = 'Employee Stipends';
+    suggestedType = 'expense';
+  } else if (lower.includes('receipt') || lower.includes('payment receipt')) {
+    documentType = 'receipt';
+    suggestedType = 'revenue';
+  } else if (lower.includes('tax invoice') || lower.includes('invoice')) {
+    documentType = 'invoice';
+  }
+
+  // Check if document was issued by our company (STAR MEDIA) -> Revenue!
+  const isIssuedByCompany = /star\s*media/i.test(lines.slice(0, 5).join(' '));
+  if (isIssuedByCompany) {
+    suggestedType = 'revenue';
+    suggestedCategory = 'Client Payment';
+  } else if (documentType === 'receipt') {
+    suggestedType = 'revenue';
+  } else {
+    suggestedType = 'expense';
+    if (/(?:aws|google\s*cloud|vercel|render|hosting|server|azure|mongodb)/i.test(text)) {
+      suggestedCategory = 'Software Purchase';
+    } else if (/(?:domain|godaddy|namecheap|dns)/i.test(text)) {
+      suggestedCategory = 'Domain';
+    } else if (/(?:travel|flight|airline|hotel|ticket|transport|booking)/i.test(text)) {
+      suggestedCategory = 'Travel';
+    } else if (/(?:facebook\s*ads|meta|google\s*ads|campaign|marketing|advertising)/i.test(text)) {
+      suggestedCategory = 'Ads Running';
+    } else if (/(?:subscription|saas|canva|figma|adobe|slack|zoom)/i.test(text)) {
+      suggestedCategory = 'Software Purchase';
+    } else if (/(?:freelancer|vendor|agency|consulting)/i.test(text)) {
+      suggestedCategory = 'Vendor Costs';
+    }
+  }
+
+  // 7. Payment Status & Method
+  let paymentStatus: 'paid' | 'unpaid' | 'partially_paid' = 'unpaid';
+  if (/\bunpaid\b|payment\s*(?:pending|due)|balance\s*due/i.test(text)) {
+    paymentStatus = 'unpaid';
+  } else if (documentType === 'receipt' || /(?:payment\s*successful|\bpaid\b|receipt\s*for\s*payment|amount\s*received)/i.test(text)) {
+    paymentStatus = 'paid';
+  } else if (outstandingAmount !== null && grandTotal !== null && outstandingAmount < grandTotal && outstandingAmount > 0) {
+    paymentStatus = 'partially_paid';
+  }
+
+  let paymentMethod = 'Bank Transfer';
+  if (/(?:upi|gpay|phonepe|paytm)/i.test(text)) {
+    paymentMethod = 'UPI';
+  } else if (/(?:credit\s*card|visa|mastercard|amex)/i.test(text)) {
+    paymentMethod = 'Credit Card';
+  } else if (/(?:cash)/i.test(text)) {
+    paymentMethod = 'Cash';
+  } else if (/(?:neft|rtgs|imps|net\s*banking)/i.test(text)) {
+    paymentMethod = 'Bank Transfer';
+  }
+
+  // Confidence & Uncertainty
+  confidence.amount = grandTotal !== null ? 'high' : 'low';
+  confidence.date = documentDate !== null ? 'high' : 'medium';
+  confidence.vendor = vendorName !== null ? 'high' : 'low';
+  confidence.invoiceNumber = invoiceNumber !== null ? 'high' : 'medium';
+
+  if (!grandTotal) uncertainFields.push('amount');
+  if (!vendorName) uncertainFields.push('vendorName');
+  if (!documentDate) uncertainFields.push('documentDate');
+  if (!invoiceNumber) uncertainFields.push('invoiceNumber');
+
+  return {
+    documentType,
+    invoiceNumber: invoiceNumber || undefined,
+    billNumber: invoiceNumber || undefined,
+    receiptNumber: documentType === 'receipt' ? invoiceNumber || undefined : undefined,
+    documentDate: documentDate || undefined,
+    dueDate: dueDate || undefined,
+    currency: 'INR',
+    vendor: {
+      name: vendorName || (fileName ? fileName.replace(/\.[^/.]+$/, '').slice(0, 30) : undefined),
+      address: undefined,
+      gstin: vendorGstin || undefined,
+    },
+    customer: {
+      name: isIssuedByCompany ? undefined : 'STAR MEDIA',
+      gstin: customerGstin || undefined,
+    },
+    subtotal: subtotal || (grandTotal && totalTax ? Math.round((grandTotal - totalTax) * 100) / 100 : grandTotal) || undefined,
+    cgst: cgst || undefined,
+    sgst: sgst || undefined,
+    igst: igst || undefined,
+    totalTax: totalTax || undefined,
+    grandTotal: grandTotal || undefined,
+    suggestedTransactionType: suggestedType,
+    suggestedCategory,
+    paymentMethod,
+    paymentStatus,
+    partyDetails: {
+      vendorName: vendorName || (fileName ? fileName.replace(/\.[^/.]+$/, '').slice(0, 30) : null),
+      vendorAddress: null,
+      vendorGstin,
+      customerName: isIssuedByCompany ? null : 'STAR MEDIA',
+      customerGstin,
+    },
+    financialDetails: {
+      subtotal: subtotal || (grandTotal && totalTax ? Math.round((grandTotal - totalTax) * 100) / 100 : grandTotal),
+      discount: discount || 0,
+      taxableAmount: subtotal,
+      cgst,
+      sgst,
+      igst,
+      otherTaxes: null,
+      totalTax: totalTax || 0,
+      grandTotal: grandTotal || 0,
+      amountPaid: amountPaid || (paymentStatus === 'paid' ? grandTotal : 0),
+      outstandingAmount: outstandingAmount || (paymentStatus === 'paid' ? 0 : grandTotal),
+    },
+    transactionDetails: {
+      suggestedType,
+      suggestedCategory,
+      paymentMethod,
+      paymentStatus,
+      description: `${vendorName ? `${vendorName} - ` : ''}${invoiceNumber ? `Invoice #${invoiceNumber}` : 'Document Scan'}`.trim(),
+      notes: [
+        vendorGstin ? `Vendor GSTIN: ${vendorGstin}` : null,
+        invoiceNumber ? `Invoice Ref: ${invoiceNumber}` : null,
+        totalTax ? `Total GST: ₹${totalTax}` : null,
+      ].filter(Boolean).join(' | '),
+    },
+    lineItems: [],
+    confidence,
+    uncertainFields,
+  } as any;
+}
+
+/**
+ * Call Google Gemini Vision / Multimodal API for state-of-the-art document extraction.
+ */
+export async function extractWithGemini(
+  fileBuffer: Buffer,
+  mimeType: string
+): Promise<IExtractedFinancialData | null> {
+  const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const model = env.GEMINI_MODEL || 'gemini-1.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const prompt = `You are a Senior Financial Auditor and Expert Document OCR Specialist for an Indian CRM accounting system.
+Analyze the attached document (invoice, receipt, bill, or salary slip) and extract financial, tax, and party details accurately.
+Follow standard Indian and International accounting principles (e.g. Subtotal + CGST + SGST or IGST = Grand Total).
+Never confuse Subtotal with Grand Total, or Amount Paid with Balance Due.
+
+Output ONLY a valid JSON object matching this schema:
+{
+  "documentType": "tax_invoice" | "bill" | "receipt" | "credit_note" | "debit_note" | "salary_slip" | "other",
+  "invoiceNumber": string or null,
+  "receiptNumber": string or null,
+  "billNumber": string or null,
+  "documentDate": "YYYY-MM-DD" or null,
+  "dueDate": "YYYY-MM-DD" or null,
+  "currency": "INR" or currency code,
+  "partyDetails": {
+    "vendorName": string or null,
+    "vendorAddress": string or null,
+    "vendorGstin": string or null,
+    "customerName": string or null,
+    "customerGstin": string or null
+  },
+  "financialDetails": {
+    "subtotal": number or null,
+    "discount": number or null,
+    "taxableAmount": number or null,
+    "cgst": number or null,
+    "sgst": number or null,
+    "igst": number or null,
+    "otherTaxes": number or null,
+    "totalTax": number or null,
+    "grandTotal": number,
+    "amountPaid": number or null,
+    "outstandingAmount": number or null
+  },
+  "transactionDetails": {
+    "suggestedType": "expense" or "revenue",
+    "suggestedCategory": string (e.g. "Software Purchase", "Domain", "Ads Running", "Marketing", "Office Expenses", "Employee Stipends", "Vendor Costs", "Client Payment"),
+    "paymentMethod": "UPI" | "Bank Transfer" | "Credit Card" | "Cash" or null,
+    "paymentStatus": "paid" | "unpaid" | "partially_paid",
+    "description": string,
+    "notes": string
+  },
+  "lineItems": [
+    {
+      "name": string,
+      "quantity": number,
+      "unitPrice": number,
+      "taxRate": number,
+      "lineTotal": number
+    }
+  ],
+  "confidence": {
+    "amount": "high" | "medium" | "low",
+    "date": "high" | "medium" | "low",
+    "vendor": "high" | "medium" | "low",
+    "invoiceNumber": "high" | "medium" | "low"
+  },
+  "uncertainFields": ["string"]
+}`;
+
+    const base64Data = fileBuffer.toString('base64');
+    const body = {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: 'application/json',
+      },
+    };
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn(`[DocumentScanner] Gemini API error (${res.status}):`, errText);
+      return null;
+    }
+
+    const json = await res.json();
+    const candidateText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!candidateText) return null;
+
+    const parsed: IExtractedFinancialData = JSON.parse(candidateText);
+    return parsed;
+  } catch (err) {
+    console.warn('[DocumentScanner] Gemini extraction failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Call OpenAI API for structured extraction if configured.
+ */
+export async function extractWithOpenAI(
+  fileBuffer: Buffer,
+  mimeType: string,
+  rawText?: string
+): Promise<IExtractedFinancialData | null> {
+  const apiKey = env.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const model = env.OPENAI_MODEL || 'gpt-4o-mini';
+    const isImage = mimeType.startsWith('image/');
+
+    const messages: any[] = [
+      {
+        role: 'system',
+        content: `You are a financial audit OCR model. Extract invoice, receipt, tax and party details accurately. Return valid JSON matching the financial schema.`,
+      },
+    ];
+
+    if (isImage) {
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Extract all financial details, GSTIN, invoice number, items, and totals from this bill/receipt.' },
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:${mimeType};base64,${fileBuffer.toString('base64')}`,
+            },
+          },
+        ],
+      });
+    } else {
+      messages.push({
+        role: 'user',
+        content: `Extract all financial details, GSTIN, invoice number, items, and totals from this document text:\n\n${rawText || ''}`,
+      });
+    }
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        response_format: { type: 'json_object' },
+        temperature: 0.1,
+      }),
+    });
+
+    if (!res.ok) return null;
+    const json = await res.json();
+    const content = json.choices?.[0]?.message?.content;
+    if (!content) return null;
+
+    return JSON.parse(content) as IExtractedFinancialData;
+  } catch (err) {
+    console.warn('[DocumentScanner] OpenAI extraction failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Validate file mime type and magic bytes to prevent disguised executable uploads.
+ */
+export function validateDocumentFile(
+  buffer: Buffer,
+  originalMime: string,
+  originalName?: string,
+  maxMb?: number
+): { isValid: boolean; fileType: 'pdf' | 'image' } {
+  const allowedMimes = new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp',
+  ]);
+
+  if (!allowedMimes.has(originalMime.toLowerCase())) {
+    throw new AppError('Unsupported file type. Please upload a PDF, JPG, PNG, or WEBP file.', 400, 'INVALID_FILE_TYPE');
+  }
+
+  const effectiveMaxMb = maxMb || env.DOCUMENT_SCAN_MAX_MB || 15;
+  if (buffer.length > effectiveMaxMb * 1024 * 1024) {
+    throw new AppError(`File exceeds maximum allowed size (${effectiveMaxMb}MB)`, 400, 'FILE_TOO_LARGE');
+  }
+
+  // Magic bytes verification
+  if (buffer.length < 4) {
+    throw new AppError('Invalid or corrupted document file', 400, 'CORRUPTED_FILE');
+  }
+
+  const hexHeader = buffer.slice(0, 4).toString('hex').toLowerCase();
+
+  // PDF: %PDF (25 50 44 46)
+  const isPdf = hexHeader.startsWith('25504446');
+  // JPEG: FF D8 FF
+  const isJpeg = hexHeader.startsWith('ffd8ff');
+  // PNG: 89 50 4E 47
+  const isPng = hexHeader.startsWith('89504e47');
+  // WEBP: RIFF...WEBP (52 49 46 46)
+  const isWebp = hexHeader.startsWith('52494646');
+
+  if (!isPdf && !isJpeg && !isPng && !isWebp) {
+    throw new AppError('File signature does not match allowed document types. Executables or disguised files are rejected.', 400, 'SECURITY_VIOLATION');
+  }
+
+  return {
+    isValid: true,
+    fileType: isPdf ? 'pdf' : 'image',
+  };
+}
+
+/**
+ * Main pipeline: Validate, hash, duplicate check, extract text/OCR/AI, store file, and record scan.
+ */
+export async function processFinancialDocument(
+  file: Express.Multer.File,
+  user: { id: string; role: string }
+): Promise<ScanResult> {
+  if (!file) {
+    throw new AppError('No document file uploaded', 400);
+  }
+
+  const filePath = file.path;
+  const fileBuffer = fs.readFileSync(filePath);
+
+  // 1. Security & Magic bytes validation
+  validateDocumentFile(fileBuffer, file.mimetype);
+
+  // 2. Hash calculation
+  const documentHash = computeFileHash(fileBuffer);
+
+  // 3. Initial text extraction (PDF / OCR)
+  let rawText = '';
+  const isPdf = file.mimetype === 'application/pdf';
+
+  if (isPdf) {
+    rawText = await extractTextFromPDF(fileBuffer);
+  } else {
+    // For images, run Tesseract OCR if no cloud AI is set or for offline support
+    const hasCloudAI = !!(env.GEMINI_API_KEY || env.OPENAI_API_KEY);
+    if (!hasCloudAI) {
+      rawText = await extractTextFromImageOCR(filePath);
+    }
+  }
+
+  // 4. Extraction Engine Selection (AI -> OCR -> Heuristic fallback)
+  let extracted: IExtractedFinancialData | null = null;
+  let providerUsed: ScanResult['provider'] = 'heuristic';
+
+  const preferredProvider = env.AI_OCR_PROVIDER || 'auto';
+
+  if (preferredProvider !== 'heuristic') {
+    // Try Gemini first if available (supports direct PDF and images)
+    if (env.GEMINI_API_KEY && (preferredProvider === 'auto' || preferredProvider === 'gemini')) {
+      extracted = await extractWithGemini(fileBuffer, file.mimetype);
+      if (extracted) providerUsed = 'gemini';
+    }
+
+    // Try OpenAI next if Gemini wasn't configured or failed
+    if (!extracted && env.OPENAI_API_KEY && (preferredProvider === 'auto' || preferredProvider === 'openai')) {
+      extracted = await extractWithOpenAI(fileBuffer, file.mimetype, rawText);
+      if (extracted) providerUsed = 'openai';
+    }
+  }
+
+  // Fallback to offline regex & heuristics parser
+  if (!extracted) {
+    // If it's an image and rawText was empty (because cloud AI was skipped), run OCR now
+    if (!isPdf && !rawText) {
+      rawText = await extractTextFromImageOCR(filePath);
+    }
+    extracted = parseFinancialTextWithHeuristics(rawText, file.originalname);
+    providerUsed = isPdf ? 'pdf-parse' : rawText ? 'tesseract' : 'heuristic';
+  }
+
+  // 5. Duplicate Detection Check
+  const duplicateCheck = await checkDuplicateDocument(
+    documentHash,
+    extracted.invoiceNumber,
+    extracted.financialDetails.grandTotal,
+    extracted.partyDetails.vendorName
+  );
+
+  // 6. Secure Storage (Cloudinary if available, otherwise local persistent path)
+  let fileUrl = publicUploadPath(file.filename);
+  const cloudUpload = await uploadDocumentToCloudinary(filePath, 'starmedia/financial-docs');
+  if (cloudUpload?.secure_url) {
+    fileUrl = cloudUpload.secure_url;
+  }
+
+  // 7. Store ScannedDocument entry in DB
+  const scannedDoc = await ScannedDocument.create({
+    fileName: file.originalname,
+    fileUrl,
+    fileSize: file.size,
+    mimeType: file.mimetype,
+    documentHash,
+    documentType: extracted.documentType || 'bill',
+    extractedData: extracted,
+    rawText: rawText ? rawText.slice(0, 10000) : undefined, // limit raw text size in DB
+    provider: providerUsed,
+    status: 'scanned',
+    scannedBy: user.id,
+  });
+
+  return {
+    scanId: scannedDoc._id.toString(),
+    fileName: file.originalname,
+    fileUrl,
+    fileSize: file.size,
+    mimeType: file.mimetype,
+    documentHash,
+    extractedData: extracted,
+    isDuplicate: duplicateCheck.isDuplicate,
+    duplicateMatch: duplicateCheck.duplicateMatch,
+    duplicateWarning: duplicateCheck.warning,
+    provider: providerUsed,
+  };
+}

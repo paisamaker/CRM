@@ -20,6 +20,9 @@ import {
   FileSpreadsheet,
   AlertCircle,
   ExternalLink,
+  Scan,
+  Sparkles,
+  Calculator,
 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -53,6 +56,7 @@ export function IncomeExpenseTab({ type }: Props) {
 
   // Modals state
   const [modalOpen, setModalOpen] = useState(false);
+  const [autoOpenScanner, setAutoOpenScanner] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<TransactionItem | null>(null);
   const [viewTransaction, setViewTransaction] = useState<any | null>(null);
 
@@ -169,7 +173,64 @@ export function IncomeExpenseTab({ type }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
+      {/* ── ACTION TOOLBAR ─────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-1">
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+            isIncome ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${isIncome ? 'bg-emerald-500' : 'bg-rose-500'} animate-pulse`} />
+            {labelPlural} Ledger
+          </span>
+          <span className="text-xs text-[var(--fg-muted)]">
+            Viewing records for <span className="font-semibold text-[var(--fg-primary)] capitalize">{dateFilter.replace('_', ' ')}</span>
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-9 px-3 gap-1.5 whitespace-nowrap"
+            onClick={handleExportCSV}
+            title="Export filtered records to CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export CSV</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-9 px-3.5 gap-1.5 border-teal-500/40 text-teal-400 hover:bg-teal-500/10 shadow-xs whitespace-nowrap font-medium"
+            onClick={() => {
+              setEditingTransaction(null);
+              setAutoOpenScanner(true);
+              setModalOpen(true);
+            }}
+            title="Scan Bill or Receipt with AI OCR"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+            <span>Scan Bill / Receipt</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant={isIncome ? 'teal' : 'primary'}
+            className="text-xs h-9 px-3.5 gap-1.5 shadow-md shadow-teal-500/10 whitespace-nowrap font-semibold"
+            onClick={() => {
+              setEditingTransaction(null);
+              setAutoOpenScanner(false);
+              setModalOpen(true);
+            }}
+          >
+            <Plus className="w-4 h-4 shrink-0" />
+            <span>Add {label}</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* ── SUMMARY STAT CARDS ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div
           className={`p-4 rounded-2xl bg-gradient-to-br ${
@@ -209,35 +270,16 @@ export function IncomeExpenseTab({ type }: Props) {
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-transparent border border-purple-500/20 shadow-sm flex items-center justify-between">
-          <div>
-            <div className="text-xs font-medium text-purple-400">Average Per Transaction</div>
-            <div className="text-2xl font-bold mt-2 text-[var(--fg-primary)]">
-              {formatCurrency(totalCount > 0 ? totalAmount / totalCount : 0)}
-            </div>
-            <div className="text-[11px] text-[var(--fg-muted)] mt-1">Mean {label.toLowerCase()} ticket size</div>
+        <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-transparent border border-purple-500/20 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-purple-400">Average Per Transaction</span>
+            <Calculator className="w-4 h-4 text-purple-400" />
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs"
-              onClick={handleExportCSV}
-              title="Export filtered records to CSV"
-            >
-              <Download className="w-3.5 h-3.5 mr-1" /> Export
-            </Button>
-            <Button
-              size="sm"
-              variant="teal"
-              className="text-xs gap-1 shadow-md shadow-teal-500/10"
-              onClick={() => {
-                setEditingTransaction(null);
-                setModalOpen(true);
-              }}
-            >
-              <Plus className="w-4 h-4" /> Add {label}
-            </Button>
+          <div className="text-2xl font-bold mt-2 text-[var(--fg-primary)]">
+            {formatCurrency(totalCount > 0 ? totalAmount / totalCount : 0)}
+          </div>
+          <div className="text-[11px] text-[var(--fg-muted)] mt-1">
+            Mean {label.toLowerCase()} ticket size
           </div>
         </div>
       </div>
@@ -515,6 +557,7 @@ export function IncomeExpenseTab({ type }: Props) {
         onClose={() => setModalOpen(false)}
         initialType={type}
         editingTransaction={editingTransaction}
+        autoOpenScanner={autoOpenScanner}
       />
 
       {/* Transaction Details & Printable Receipt Modal */}

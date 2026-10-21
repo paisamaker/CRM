@@ -23,3 +23,4 @@ export * from './ChatMessage.js';
 export * from './Team.js';
 export * from './FinanceCategory.js';
 export * from './Bill.js';
+export * from './ScannedDocument.js';

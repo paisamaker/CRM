@@ -17,8 +17,12 @@ export interface ITransaction extends Document {
   bill?: Types.ObjectId;
   payroll?: Types.ObjectId;
   bankAccount?: Types.ObjectId;
+  invoiceNumber?: string;
+  documentHash?: string;
+  scannedDocument?: Types.ObjectId;
+  documentMetadata?: Record<string, unknown>;
   receipt?: { name: string; url: string };
-  attachment?: { name: string; url: string; mime?: string; size?: number };
+  attachment?: { name: string; url: string; mime?: string; size?: number; hash?: string };
   paymentMethod?: string;
   status: 'draft' | 'pending' | 'approved' | 'rejected' | 'paid' | 'cancelled';
   approval?: Types.ObjectId;
@@ -46,12 +50,17 @@ const transactionSchema = new Schema<ITransaction>(
     bill: { type: Schema.Types.ObjectId, ref: 'Bill', index: true },
     payroll: { type: Schema.Types.ObjectId, ref: 'Payroll', index: true },
     bankAccount: { type: Schema.Types.ObjectId, ref: 'BankAccount', index: true },
+    invoiceNumber: { type: String, trim: true, index: true },
+    documentHash: { type: String, index: true },
+    scannedDocument: { type: Schema.Types.ObjectId, ref: 'ScannedDocument', index: true },
+    documentMetadata: { type: Schema.Types.Mixed },
     receipt: { name: String, url: String },
     attachment: {
       name: String,
       url: String,
       mime: String,
       size: Number,
+      hash: String,
     },
     paymentMethod: String,
     status: {

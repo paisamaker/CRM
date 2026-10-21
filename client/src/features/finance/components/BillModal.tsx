@@ -9,11 +9,16 @@ import {
   Calendar,
   Receipt,
   FileCheck,
+  Sparkles,
+  Scan,
+  AlertCircle,
+  Eye,
 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input, Label, Select } from '@/components/ui/Input';
+import { DocumentScannerDropzone, type ScanResultPayload } from './DocumentScannerDropzone';
 
 export interface BillItem {
   _id?: string;
@@ -36,11 +41,14 @@ export interface BillItem {
   client?: string;
   description?: string;
   notes?: string;
+  scannedDocument?: any;
+  documentHash?: string;
   attachment?: {
     name: string;
     url: string;
     mime?: string;
     size?: number;
+    hash?: string;
   };
 }
 
@@ -49,9 +57,10 @@ interface Props {
   onClose: () => void;
   initialType?: 'payable' | 'receivable';
   editingBill?: BillItem | null;
+  autoOpenScanner?: boolean;
 }
 
-export function BillModal({ open, onClose, initialType = 'payable', editingBill }: Props) {
+export function BillModal({ open, onClose, initialType = 'payable', editingBill, autoOpenScanner = false }: Props) {
   const qc = useQueryClient();
   const isEditing = !!editingBill?._id;
 
@@ -76,9 +85,19 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill 
     url: string;
     mime?: string;
     size?: number;
+    hash?: string;
   } | null>(null);
 
   const [uploading, setUploading] = useState(false);
+
+  // AI Scanner state
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannedMeta, setScannedMeta] = useState<{
+    scannedDocumentId?: string;
+    documentHash?: string;
+    engine?: string;
+  } | null>(null);
+  const [uncertainFields, setUncertainFields] = useState<Record<string, boolean>>({});
 
   // Fetch categories
   const { data: categoriesData } = useQuery({
@@ -112,6 +131,16 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill 
           notes: editingBill.notes || '',
         });
         setAttachment(editingBill.attachment || null);
+        setScannedMeta(
+          editingBill.scannedDocument
+            ? {
+                scannedDocumentId: typeof editingBill.scannedDocument === 'object' ? editingBill.scannedDocument._id : editingBill.scannedDocument,
+                documentHash: editingBill.documentHash,
+              }
+            : null
+        );
+        setShowScanner(false);
+        setUncertainFields({});
       } else {
         const prefix = initialType === 'receivable' ? 'REC' : 'BILL';
         const rand = Math.floor(1000 + Math.random() * 9000);
@@ -132,9 +161,12 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill 
           notes: '',
         });
         setAttachment(null);
+        setScannedMeta(null);
+        setShowScanner(autoOpenScanner);
+        setUncertainFields({});
       }
     }
-  }, [open, editingBill, initialType]);
+  }, [open, editingBill, initialType, autoOpenScanner]);
 
   const categories =
     form.type === 'receivable'
@@ -157,7 +189,79 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill 
     }
   }, [categories, form.category]);
 
-  // Handle attachment upload
+  // Handle scanned document result for bill
+  const handleScanComplete = (result: ScanResultPayload) => {
+    const data = result.extractedData;
+    const conf = result.confidence || { overall: 0.8, fields: {} };
+
+    // Identify target bill type
+    const newType = data.suggestedTransactionType === 'revenue' ? 'receivable' : 'payable';
+
+    // Best matching category
+    let matchedCategory = form.category;
+    const catList = newType === 'receivable'
+      ? categoriesData?.incomeCategories || ['Client Payment', 'Project Revenue', 'Service Revenue', 'Other Income']
+      : categoriesData?.expenseCategories || ['Software Purchase', 'Office Expenses', 'Marketing', 'Vendor Payment', 'Other Expenses'];
+
+    if (data.suggestedCategory && catList.includes(data.suggestedCategory)) {
+      matchedCategory = data.suggestedCategory;
+    } else if (catList.length > 0) {
+      matchedCategory = catList[0];
+    }
+
+    const party = (newType === 'payable' ? data.vendor?.name : data.customer?.name) || '';
+    const invoiceNum = data.invoiceNumber || data.billNumber || form.billNumber;
+
+    // Track uncertainty
+    const uncertain: Record<string, boolean> = {};
+    if (!data.grandTotal || (conf.fields['grandTotal'] && conf.fields['grandTotal'] < 0.65)) {
+      uncertain['amount'] = true;
+    }
+    if (!data.documentDate || (conf.fields['documentDate'] && conf.fields['documentDate'] < 0.65)) {
+      uncertain['billDate'] = true;
+    }
+    setUncertainFields(uncertain);
+
+    setForm((prev) => ({
+      ...prev,
+      type: newType,
+      billNumber: invoiceNum,
+      partyName: party || prev.partyName,
+      title: `${invoiceNum}${party ? ` - ${party}` : ''}`,
+      category: matchedCategory,
+      amount: data.grandTotal ? String(data.grandTotal) : data.subtotal ? String(data.subtotal) : prev.amount,
+      taxAmount: data.totalTax ? String(data.totalTax) : '0',
+      billDate: data.documentDate || prev.billDate,
+      dueDate: data.dueDate || prev.dueDate,
+      paymentStatus: (data.paymentStatus as any) || 'unpaid',
+      paymentMethod: data.paymentMethod || prev.paymentMethod,
+      description: data.description || (data.vendor?.address ? `Vendor Address: ${data.vendor.address}` : prev.description),
+      notes: [
+        prev.notes,
+        data.vendor?.gstin ? `Vendor GSTIN: ${data.vendor.gstin}` : '',
+        data.customer?.gstin ? `Customer GSTIN: ${data.customer.gstin}` : '',
+      ]
+        .filter(Boolean)
+        .join(' | '),
+    }));
+
+    // Set attachment automatically
+    setAttachment({
+      name: result.fileName,
+      url: result.fileUrl,
+      mime: result.fileMime,
+      size: result.fileSize,
+      hash: result.documentHash,
+    });
+
+    setScannedMeta({
+      scannedDocumentId: result.scannedDocumentId,
+      documentHash: result.documentHash,
+      engine: result.extractionEngine,
+    });
+  };
+
+  // Handle manual attachment upload
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -194,26 +298,48 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill 
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const numAmount = Number(form.amount);
+      if (!form.amount || isNaN(numAmount) || numAmount <= 0) {
+        throw new Error('Please enter a valid amount greater than 0');
+      }
+
+      let cleanBillDate = form.billDate?.trim() || new Date().toISOString().slice(0, 10);
+      if (/^\d{1,2}[/\-.]\d{1,2}[/\-.]\d{4}$/.test(cleanBillDate)) {
+        const parts = cleanBillDate.split(/[/\-.]/);
+        cleanBillDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+
+      let cleanDueDate = form.dueDate?.trim() || undefined;
+      if (cleanDueDate && /^\d{1,2}[/\-.]\d{1,2}[/\-.]\d{4}$/.test(cleanDueDate)) {
+        const parts = cleanDueDate.split(/[/\-.]/);
+        cleanDueDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+
+      const party = form.partyName?.trim() || (form.type === 'receivable' ? 'Client' : 'Vendor');
+
       const payload: any = {
-        billNumber: form.billNumber.trim(),
-        title: form.title.trim(),
+        billNumber: form.billNumber?.trim() || undefined,
+        title: form.title?.trim() || `${party} - ${form.category}`,
+        partyName: party,
         type: form.type,
-        category: form.category,
-        amount: Number(form.amount),
+        category: form.category || (form.type === 'receivable' ? 'Client Payment' : 'Office Expenses'),
+        amount: numAmount,
         taxAmount: Number(form.taxAmount) || 0,
-        billDate: form.billDate,
-        dueDate: form.dueDate || undefined,
-        paymentStatus: form.paymentStatus,
-        paymentMethod: form.paymentMethod,
-        description: form.description || undefined,
-        notes: form.notes || undefined,
+        billDate: cleanBillDate,
+        dueDate: cleanDueDate,
+        paymentStatus: form.paymentStatus || 'unpaid',
+        paymentMethod: form.paymentMethod || 'Bank Transfer',
+        description: form.description?.trim() || undefined,
+        notes: form.notes?.trim() || undefined,
         attachment: attachment || undefined,
+        scannedDocument: scannedMeta?.scannedDocumentId || undefined,
+        documentHash: scannedMeta?.documentHash || undefined,
       };
 
       if (form.type === 'receivable') {
-        payload.clientName = form.partyName;
+        payload.clientName = party;
       } else {
-        payload.vendorName = form.partyName;
+        payload.vendorName = party;
       }
 
       if (isEditing) {
@@ -245,7 +371,7 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill 
           <div>
             <div className="font-semibold">{isEditing ? 'Edit Bill / Invoice' : 'New Bill / Invoice'}</div>
             <div className="text-xs text-[var(--fg-secondary)] font-normal">
-              Create customizable bills with attachment support and payment ledger tracking
+              Enter bill details or scan document with AI to extract fields automatically
             </div>
           </div>
         </div>
@@ -255,7 +381,10 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill 
       footer={
         <div className="flex items-center justify-between w-full">
           <div className="text-xs text-[var(--fg-secondary)]">
-            Total Amount: <span className="font-semibold text-[var(--fg-primary)]">₹{calculatedTotal.toLocaleString('en-IN')}</span>
+            Total Amount:{' '}
+            <span className="font-semibold text-[var(--fg-primary)]">
+              ₹{calculatedTotal.toLocaleString('en-IN')}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={onClose} disabled={saveMutation.isPending}>
@@ -272,13 +401,58 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill 
               }
               onClick={() => saveMutation.mutate()}
             >
-              {saveMutation.isPending ? 'Saving…' : isEditing ? 'Update Bill' : 'Create Bill'}
+              {saveMutation.isPending ? 'Saving…' : isEditing ? 'Update Bill' : 'Confirm & Create Bill'}
             </Button>
           </div>
         </div>
       }
     >
       <div className="space-y-4 py-1 text-sm">
+        {/* Prominent Scan Bill Option (Only for new bills) */}
+        {!isEditing && (
+          <div className="rounded-2xl border border-teal-500/30 bg-gradient-to-r from-teal-500/10 via-cyan-500/10 to-transparent p-3.5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-400">
+                  <Sparkles className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[var(--fg-primary)] flex items-center gap-1.5">
+                    <span>Scan Vendor Bill or Client Invoice</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-teal-500/20 text-teal-300 font-semibold border border-teal-500/30">
+                      AI OCR
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-[var(--fg-muted)]">
+                    Upload bill file to automatically extract invoice number, totals, GST, and due dates
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                size="sm"
+                variant={showScanner ? 'outline' : 'teal'}
+                className="text-xs gap-1.5 shadow-sm"
+                onClick={() => setShowScanner(!showScanner)}
+              >
+                <Scan className="w-3.5 h-3.5" />
+                <span>{showScanner ? 'Hide Scanner' : 'Scan Bill'}</span>
+              </Button>
+            </div>
+
+            {showScanner && (
+              <div className="mt-3.5 pt-3 border-t border-teal-500/20">
+                <DocumentScannerDropzone
+                  onScanComplete={(res) => {
+                    handleScanComplete(res);
+                  }}
+                  onCancel={() => setShowScanner(false)}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Bill Type Selector */}
         <div className="grid grid-cols-2 gap-3 p-1 bg-[var(--surface-sunken)] rounded-xl border border-[var(--border-subtle)]">
           <button
@@ -360,60 +534,80 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill 
           </div>
         </div>
 
-        {/* Financial Amounts */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-xl bg-[var(--surface-sunken)]/50 border border-[var(--border-subtle)]">
+        {/* Amounts and Tax */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label>Base Amount (INR) *</Label>
+            <div className="flex items-center justify-between mb-1">
+              <Label>Taxable / Net Amount (INR ₹) *</Label>
+              {uncertainFields['amount'] && (
+                <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1 rounded flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> Verify
+                </span>
+              )}
+            </div>
             <Input
               type="number"
+              placeholder="0.00"
               min="0"
               step="0.01"
-              placeholder="0.00"
               value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
+              className={uncertainFields['amount'] ? 'border-amber-500' : ''}
+              onChange={(e) => {
+                setForm({ ...form, amount: e.target.value });
+                if (uncertainFields['amount']) {
+                  setUncertainFields((u) => ({ ...u, amount: false }));
+                }
+              }}
             />
           </div>
 
           <div>
-            <Label>Tax Amount (GST / VAT)</Label>
+            <Label>Tax / GST Amount (INR ₹)</Label>
             <Input
               type="number"
+              placeholder="0.00"
               min="0"
               step="0.01"
-              placeholder="0.00"
               value={form.taxAmount}
               onChange={(e) => setForm({ ...form, taxAmount: e.target.value })}
             />
           </div>
-
-          <div>
-            <Label>Total Payable / Due</Label>
-            <div className="h-10 px-3 flex items-center bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg font-bold text-sm text-[var(--accent)]">
-              ₹{calculatedTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-            </div>
-          </div>
         </div>
 
-        {/* Dates & Payment */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Dates */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label>Bill Date *</Label>
+            <div className="flex items-center justify-between mb-1">
+              <Label>Bill / Issue Date *</Label>
+              {uncertainFields['billDate'] && (
+                <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1 rounded">Verify</span>
+              )}
+            </div>
             <Input
               type="date"
               value={form.billDate}
-              onChange={(e) => setForm({ ...form, billDate: e.target.value })}
+              className={uncertainFields['billDate'] ? 'border-amber-500' : ''}
+              onChange={(e) => {
+                setForm({ ...form, billDate: e.target.value });
+                if (uncertainFields['billDate']) {
+                  setUncertainFields((u) => ({ ...u, billDate: false }));
+                }
+              }}
             />
           </div>
 
           <div>
-            <Label>Due Date</Label>
+            <Label>Payment Due Date</Label>
             <Input
               type="date"
               value={form.dueDate}
               onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
             />
           </div>
+        </div>
 
+        {/* Payment Setup */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label>Payment Method</Label>
             <Select
@@ -423,10 +617,20 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill 
               <option value="Bank Transfer">Bank Transfer (NEFT/RTGS/IMPS)</option>
               <option value="UPI">UPI</option>
               <option value="Credit Card">Credit Card</option>
-              <option value="Debit Card">Debit Card</option>
               <option value="Cheque">Cheque</option>
               <option value="Cash">Cash</option>
-              <option value="Other">Other</option>
+            </Select>
+          </div>
+
+          <div>
+            <Label>Payment Status</Label>
+            <Select
+              value={form.paymentStatus}
+              onChange={(e) => setForm({ ...form, paymentStatus: e.target.value as any })}
+            >
+              <option value="unpaid">Unpaid (Awaiting settlement)</option>
+              <option value="partially_paid">Partially Paid</option>
+              <option value="paid">Paid in Full</option>
             </Select>
           </div>
         </div>
@@ -471,9 +675,9 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill 
                   href={attachment.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-teal-400 hover:underline"
+                  className="text-xs text-teal-400 hover:underline flex items-center gap-1"
                 >
-                  View
+                  <Eye className="w-3.5 h-3.5" /> View
                 </a>
                 <button
                   type="button"

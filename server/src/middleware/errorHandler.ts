@@ -10,12 +10,17 @@ export function notFoundHandler(_req: Request, res: Response) {
 
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
   if (err instanceof ZodError) {
+    const flat = err.flatten();
+    const fieldMsgs = Object.entries(flat.fieldErrors)
+      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+      .join('; ');
+    const message = fieldMsgs ? `Validation failed (${fieldMsgs})` : 'Validation failed';
     return res.status(400).json({
       success: false,
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'Validation failed',
-        details: err.flatten(),
+        message,
+        details: flat,
       },
     });
   }

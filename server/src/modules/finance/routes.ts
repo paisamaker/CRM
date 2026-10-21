@@ -32,6 +32,7 @@ import { FinanceCategory, DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES 
 import categoryRoutes from './categoryRoutes.js';
 import billRoutes from './billRoutes.js';
 import salaryRoutes from './salaryRoutes.js';
+import documentRoutes from './documentRoutes.js';
 import {
   startOfDay,
   endOfDay,
@@ -55,6 +56,39 @@ router.use(authenticate);
 router.use('/categories', categoryRoutes);
 router.use('/bills', billRoutes);
 router.use('/salaries', salaryRoutes);
+router.use('/documents', documentRoutes);
+
+export function parseFlexibleDate(val: unknown): Date | null {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+    const dmy = trimmed.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+    if (dmy) {
+      const day = parseInt(dmy[1], 10);
+      const month = parseInt(dmy[2], 10) - 1;
+      const year = parseInt(dmy[3], 10);
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) return d;
+    }
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+export const flexibleDateSchema = z.preprocess((val) => {
+  if (val === undefined || val === null || val === '') return undefined;
+  const d = parseFlexibleDate(val);
+  return d || val;
+}, z.date());
+
+export const flexibleDateSchemaOptional = z.preprocess((val) => {
+  if (val === undefined || val === null || val === '') return undefined;
+  const d = parseFlexibleDate(val);
+  return d || undefined;
+}, z.date().optional().nullable());
 
 function parseRange(from?: string, to?: string) {
   const end = to ? endOfDay(new Date(to)) : endOfDay(new Date());
@@ -226,22 +260,35 @@ router.post(
       .object({
         type: z.enum(['revenue', 'expense']),
         category: z.string().trim(),
-        amount: z.number().positive(),
-        taxAmount: z.number().min(0).optional(),
-        currency: z.string().optional(),
-        date: z.coerce.date(),
-        client: z.string().optional(),
-        vendor: z.string().optional(),
-        employee: z.string().optional(),
-        project: z.string().optional(),
-        paymentMethod: z.string().optional(),
-        bankAccountId: z.string().optional(),
-        notes: z.string().optional(),
-        title: z.string().optional(),
-        description: z.string().optional(),
-        receipt: z.object({ name: z.string(), url: z.string() }).optional(),
-        attachment: z.object({ name: z.string(), url: z.string(), mime: z.string().optional(), size: z.number().optional() }).optional(),
-        submitForApproval: z.boolean().optional(),
+        amount: z.coerce.number().positive(),
+        taxAmount: z.coerce.number().min(0).optional().nullable(),
+        currency: z.string().optional().nullable(),
+        date: flexibleDateSchema,
+        client: z.string().optional().nullable(),
+        vendor: z.string().optional().nullable(),
+        employee: z.string().optional().nullable(),
+        project: z.string().optional().nullable(),
+        paymentMethod: z.string().optional().nullable(),
+        bankAccountId: z.string().optional().nullable(),
+        notes: z.string().optional().nullable(),
+        title: z.string().optional().nullable(),
+        description: z.string().optional().nullable(),
+        invoiceNumber: z.string().optional().nullable(),
+        documentHash: z.string().optional().nullable(),
+        scannedDocument: z.string().optional().nullable(),
+        documentMetadata: z.record(z.unknown()).optional().nullable(),
+        receipt: z.object({ name: z.string(), url: z.string() }).optional().nullable(),
+        attachment: z
+          .object({
+            name: z.string(),
+            url: z.string(),
+            mime: z.string().optional().nullable(),
+            size: z.number().optional().nullable(),
+            hash: z.string().optional().nullable(),
+          })
+          .optional()
+          .nullable(),
+        submitForApproval: z.boolean().optional().nullable(),
       })
       .parse(req.body);
 
@@ -304,6 +351,13 @@ router.post(
       .join('\n') || undefined;
 
     const { title: _title, submitForApproval: _submit, bankAccountId, ...txFields } = body;
+    const cleanBank = (bankAccountId && typeof bankAccountId === 'string' && bankAccountId.trim() !== '') ? bankAccountId.trim() : undefined;
+    const cleanClient = (body.client && typeof body.client === 'string' && body.client.trim() !== '') ? body.client.trim() : undefined;
+    const cleanVendor = (body.vendor && typeof body.vendor === 'string' && body.vendor.trim() !== '') ? body.vendor.trim() : undefined;
+    const cleanEmployee = (body.employee && typeof body.employee === 'string' && body.employee.trim() !== '') ? body.employee.trim() : undefined;
+    const cleanProject = (body.project && typeof body.project === 'string' && body.project.trim() !== '') ? body.project.trim() : undefined;
+    const cleanScannedDoc = (body.scannedDocument && typeof body.scannedDocument === 'string' && body.scannedDocument.trim() !== '') ? body.scannedDocument.trim() : undefined;
+
     const tx = await Transaction.create({
       ...txFields,
       title: body.title?.trim() || billTitle,
@@ -311,12 +365,29 @@ router.post(
       notes,
       amount: roundMoney(body.amount),
       taxAmount: body.taxAmount ? roundMoney(body.taxAmount) : 0,
-      bankAccount: bankAccountId || undefined,
-      employee: body.employee || undefined,
+      bankAccount: cleanBank,
+      client: cleanClient,
+      vendor: cleanVendor,
+      employee: cleanEmployee,
+      project: cleanProject,
       attachment: body.attachment || (body.receipt ? { name: body.receipt.name, url: body.receipt.url } : undefined),
+      documentHash: body.documentHash || body.attachment?.hash,
+      scannedDocument: cleanScannedDoc,
+      documentMetadata: body.documentMetadata || undefined,
       status,
       createdBy: req.user!.id,
     });
+
+    if (body.scannedDocument) {
+      await import('../../models/ScannedDocument.js')
+        .then(({ ScannedDocument }) =>
+          ScannedDocument.findByIdAndUpdate(body.scannedDocument, {
+            status: 'confirmed',
+            linkedTransaction: tx._id,
+          })
+        )
+        .catch(() => null);
+    }
 
     if (status === 'approved') {
       const bank = bankAccountId
@@ -440,11 +511,29 @@ router.patch(
   asyncHandler(async (req, res) => {
     const body = z
       .object({
-        category: z.string().optional(),
-        amount: z.number().positive().optional(),
-        date: z.coerce.date().optional(),
-        status: z.enum(['draft', 'pending', 'approved', 'rejected', 'paid', 'cancelled']).optional(),
-        notes: z.string().optional(),
+        category: z.string().optional().nullable(),
+        amount: z.coerce.number().positive().optional().nullable(),
+        taxAmount: z.coerce.number().min(0).optional().nullable(),
+        date: flexibleDateSchemaOptional,
+        status: z.enum(['draft', 'pending', 'approved', 'rejected', 'paid', 'cancelled']).optional().nullable(),
+        notes: z.string().optional().nullable(),
+        title: z.string().optional().nullable(),
+        description: z.string().optional().nullable(),
+        paymentMethod: z.string().optional().nullable(),
+        bankAccountId: z.string().optional().nullable(),
+        client: z.string().optional().nullable(),
+        vendor: z.string().optional().nullable(),
+        employee: z.string().optional().nullable(),
+        attachment: z
+          .object({
+            name: z.string(),
+            url: z.string(),
+            mime: z.string().optional().nullable(),
+            size: z.number().optional().nullable(),
+            hash: z.string().optional().nullable(),
+          })
+          .optional()
+          .nullable(),
       })
       .parse(req.body);
     const existing = await Transaction.findById(req.params.id);
@@ -466,7 +555,16 @@ router.patch(
 
     if (body.amount != null) body.amount = roundMoney(body.amount);
 
-    const tx = await Transaction.findByIdAndUpdate(req.params.id, body, { new: true });
+    const updateData: any = { ...body };
+    if (updateData.bankAccountId !== undefined) {
+      updateData.bankAccount = (updateData.bankAccountId && updateData.bankAccountId.trim() !== '') ? updateData.bankAccountId : null;
+      delete updateData.bankAccountId;
+    }
+    if (updateData.client !== undefined && updateData.client?.trim() === '') updateData.client = null;
+    if (updateData.vendor !== undefined && updateData.vendor?.trim() === '') updateData.vendor = null;
+    if (updateData.employee !== undefined && updateData.employee?.trim() === '') updateData.employee = null;
+
+    const tx = await Transaction.findByIdAndUpdate(req.params.id, updateData, { new: true });
     await writeAudit({
       actor: req.user!.id,
       action: 'update',

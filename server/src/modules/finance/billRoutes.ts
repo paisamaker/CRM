@@ -11,6 +11,7 @@ import { writeAudit } from '../../utils/audit.js';
 import { paginate } from '../../utils/pagination.js';
 import { roundMoney, addMoney, subMoney } from '../../utils/money.js';
 import { startOfDay, endOfDay } from 'date-fns';
+import { flexibleDateSchema, flexibleDateSchemaOptional } from './routes.js';
 
 const router = Router();
 router.use(authenticate);
@@ -131,31 +132,65 @@ router.post(
     const rawData = req.body.data ? JSON.parse(req.body.data) : req.body;
 
     const schema = z.object({
-      title: z.string().min(2).max(120).trim(),
-      billNumber: z.string().trim().optional(),
+      title: z.string().trim().optional().nullable(),
+      billNumber: z.string().trim().optional().nullable(),
       type: z.enum(['payable', 'receivable']),
-      partyName: z.string().min(2).trim(),
-      client: z.string().optional(),
-      vendor: z.string().optional(),
-      category: z.string().min(2).trim(),
+      partyName: z.string().trim().optional().nullable(),
+      clientName: z.string().trim().optional().nullable(),
+      vendorName: z.string().trim().optional().nullable(),
+      client: z.string().optional().nullable(),
+      vendor: z.string().optional().nullable(),
+      category: z.string().trim().optional().nullable(),
       amount: z.coerce.number().positive(),
       taxAmount: z.coerce.number().default(0),
-      billDate: z.coerce.date(),
-      dueDate: z.coerce.date(),
-      description: z.string().optional(),
-      paymentMethod: z.string().optional(),
-      notes: z.string().optional(),
+      billDate: flexibleDateSchema,
+      dueDate: flexibleDateSchemaOptional,
+      description: z.string().optional().nullable(),
+      paymentMethod: z.string().optional().nullable(),
+      notes: z.string().optional().nullable(),
+      documentHash: z.string().optional().nullable(),
+      scannedDocument: z.string().optional().nullable(),
+      documentMetadata: z.record(z.unknown()).optional().nullable(),
+      attachment: z
+        .object({
+          name: z.string(),
+          url: z.string(),
+          mime: z.string().optional().nullable(),
+          size: z.number().optional().nullable(),
+          hash: z.string().optional().nullable(),
+        })
+        .optional()
+        .nullable(),
     });
 
     const parsed = schema.parse(rawData);
 
+    const partyName =
+      parsed.partyName?.trim() ||
+      parsed.clientName?.trim() ||
+      parsed.vendorName?.trim() ||
+      (parsed.type === 'receivable' ? 'Client' : 'Vendor');
+
+    const category = parsed.category?.trim() || (parsed.type === 'receivable' ? 'Client Payment' : 'Office Expenses');
+    const title = parsed.title?.trim() || `${partyName} - ${category}`;
     const amount = roundMoney(parsed.amount);
     const taxAmount = roundMoney(parsed.taxAmount || 0);
     const totalAmount = addMoney(amount, taxAmount);
     const billNumber = parsed.billNumber?.trim() || (await generateBillNumber(parsed.type));
+    const billDate = parsed.billDate;
+    const dueDate = parsed.dueDate || new Date(billDate.getTime() + 30 * 24 * 60 * 60 * 1000);
 
     // Handle uploaded attachment if present
-    let attachment: IBill['attachment'];
+    let attachment: IBill['attachment'] = undefined;
+    if (parsed.attachment) {
+      attachment = {
+        name: parsed.attachment.name,
+        url: parsed.attachment.url,
+        mime: parsed.attachment.mime || undefined,
+        size: parsed.attachment.size || undefined,
+        hash: parsed.attachment.hash || undefined,
+      };
+    }
     if (req.file) {
       attachment = {
         name: req.file.originalname,
@@ -166,28 +201,43 @@ router.post(
     }
 
     const bill = await Bill.create({
-      title: parsed.title,
+      title,
       billNumber,
       type: parsed.type,
-      partyName: parsed.partyName,
-      client: parsed.client || undefined,
-      vendor: parsed.vendor || undefined,
-      category: parsed.category,
+      partyName,
+      client: parsed.client?.trim() || undefined,
+      vendor: parsed.vendor?.trim() || undefined,
+      category,
       amount,
       taxAmount,
       totalAmount,
       paidAmount: 0,
       outstandingAmount: totalAmount,
-      billDate: parsed.billDate,
-      dueDate: parsed.dueDate,
-      description: parsed.description,
+      billDate,
+      dueDate,
+      description: parsed.description?.trim(),
       paymentStatus: 'unpaid',
-      paymentMethod: parsed.paymentMethod,
-      notes: parsed.notes,
+      paymentMethod: parsed.paymentMethod?.trim() || 'Bank Transfer',
+      notes: parsed.notes?.trim(),
+      documentHash: parsed.documentHash || attachment?.hash,
+      scannedDocument: parsed.scannedDocument?.trim() || undefined,
+      documentMetadata: parsed.documentMetadata || undefined,
       attachment,
       payments: [],
       createdBy: req.user!.id,
     });
+
+    // If linked to a ScannedDocument, update its status
+    if (parsed.scannedDocument) {
+      await import('../../models/ScannedDocument.js')
+        .then(({ ScannedDocument }) =>
+          ScannedDocument.findByIdAndUpdate(parsed.scannedDocument, {
+            status: 'confirmed',
+            linkedBill: bill._id,
+          })
+        )
+        .catch(() => null);
+    }
 
     await writeAudit({
       actor: req.user!.id,
@@ -211,17 +261,17 @@ router.patch(
     const rawData = req.body.data ? JSON.parse(req.body.data) : req.body;
 
     const schema = z.object({
-      title: z.string().min(2).max(120).trim().optional(),
-      partyName: z.string().min(2).trim().optional(),
-      category: z.string().min(2).trim().optional(),
-      amount: z.coerce.number().positive().optional(),
-      taxAmount: z.coerce.number().optional(),
-      billDate: z.coerce.date().optional(),
-      dueDate: z.coerce.date().optional(),
-      description: z.string().optional(),
-      paymentMethod: z.string().optional(),
-      notes: z.string().optional(),
-      paymentStatus: z.enum(['unpaid', 'partially_paid', 'paid', 'cancelled']).optional(),
+      title: z.string().trim().optional().nullable(),
+      partyName: z.string().trim().optional().nullable(),
+      category: z.string().trim().optional().nullable(),
+      amount: z.coerce.number().positive().optional().nullable(),
+      taxAmount: z.coerce.number().optional().nullable(),
+      billDate: flexibleDateSchemaOptional,
+      dueDate: flexibleDateSchemaOptional,
+      description: z.string().optional().nullable(),
+      paymentMethod: z.string().optional().nullable(),
+      notes: z.string().optional().nullable(),
+      paymentStatus: z.enum(['unpaid', 'partially_paid', 'paid', 'cancelled']).optional().nullable(),
     });
 
     const parsed = schema.parse(rawData);
@@ -238,16 +288,16 @@ router.patch(
     if (parsed.category) bill.category = parsed.category;
     if (parsed.billDate) bill.billDate = parsed.billDate;
     if (parsed.dueDate) bill.dueDate = parsed.dueDate;
-    if (parsed.description !== undefined) bill.description = parsed.description;
-    if (parsed.paymentMethod !== undefined) bill.paymentMethod = parsed.paymentMethod;
-    if (parsed.notes !== undefined) bill.notes = parsed.notes;
+    if (parsed.description !== undefined) bill.description = parsed.description || undefined;
+    if (parsed.paymentMethod !== undefined) bill.paymentMethod = parsed.paymentMethod || undefined;
+    if (parsed.notes !== undefined) bill.notes = parsed.notes || undefined;
 
-    if (parsed.amount !== undefined || parsed.taxAmount !== undefined) {
+    if (parsed.amount != null || parsed.taxAmount != null) {
       if (bill.payments.length > 0 && req.user!.role !== 'ceo') {
         throw new AppError('Cannot modify amount on a bill with recorded payments', 400);
       }
-      const newAmount = parsed.amount !== undefined ? roundMoney(parsed.amount) : bill.amount;
-      const newTax = parsed.taxAmount !== undefined ? roundMoney(parsed.taxAmount) : bill.taxAmount;
+      const newAmount = parsed.amount != null ? roundMoney(parsed.amount) : bill.amount;
+      const newTax = parsed.taxAmount != null ? roundMoney(parsed.taxAmount) : bill.taxAmount;
       bill.amount = newAmount;
       bill.taxAmount = newTax;
       bill.totalAmount = addMoney(newAmount, newTax);
@@ -299,10 +349,10 @@ router.post(
 
     const schema = z.object({
       amount: z.coerce.number().positive(),
-      date: z.coerce.date().default(() => new Date()),
+      date: flexibleDateSchema.default(() => new Date()),
       method: z.string().default('Bank Transfer'),
-      note: z.string().optional(),
-      bankAccountId: z.string().optional(),
+      note: z.string().optional().nullable(),
+      bankAccountId: z.string().optional().nullable(),
     });
 
     const parsed = schema.parse(rawData);
@@ -375,7 +425,7 @@ router.post(
       amount: paymentAmount,
       date: parsed.date,
       method: parsed.method,
-      note: parsed.note,
+      note: parsed.note || undefined,
       transaction: tx._id,
       receiptUrl,
       recordedBy: req.user!.id as unknown as import('mongoose').Types.ObjectId,

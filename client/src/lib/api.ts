@@ -133,8 +133,28 @@ api.interceptors.response.use(
 );
 
 export function getErrorMessage(err: unknown) {
-  const e = err as { response?: { data?: { error?: { message?: string } } }; message?: string };
-  return e?.response?.data?.error?.message || e?.message || 'Something went wrong';
+  const e = err as {
+    response?: {
+      data?: {
+        error?: {
+          message?: string;
+          details?: { fieldErrors?: Record<string, string[]> };
+        };
+        message?: string;
+      };
+    };
+    message?: string;
+  };
+  const errObj = e?.response?.data?.error;
+  if (errObj?.details?.fieldErrors) {
+    const fields = Object.entries(errObj.details.fieldErrors)
+      .map(([k, msgs]) => `${k}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+      .join('; ');
+    if (fields && (!errObj.message || errObj.message === 'Validation failed')) {
+      return `Validation failed (${fields})`;
+    }
+  }
+  return errObj?.message || e?.response?.data?.message || e?.message || 'Something went wrong';
 }
 
 function resolveFullUrl(urlOrPath: string): string {

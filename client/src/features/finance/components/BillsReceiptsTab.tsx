@@ -17,6 +17,7 @@ import {
   Trash2,
   Eye,
   FileCheck,
+  Sparkles,
 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -38,6 +39,7 @@ export function BillsReceiptsTab() {
 
   // Modals state
   const [billModalOpen, setBillModalOpen] = useState(false);
+  const [autoOpenScanner, setAutoOpenScanner] = useState(false);
   const [editingBill, setEditingBill] = useState<BillItem | null>(null);
   const [initialType, setInitialType] = useState<'payable' | 'receivable'>('payable');
 
@@ -84,15 +86,17 @@ export function BillsReceiptsTab() {
     .filter((b) => b.type === 'receivable' && b.paymentStatus !== 'paid' && b.paymentStatus !== 'cancelled')
     .reduce((sum, b) => sum + (Number(b.outstandingAmount) || 0), 0);
 
-  const openNewBill = (type: 'payable' | 'receivable' = 'payable') => {
+  const openNewBill = (type: 'payable' | 'receivable' = 'payable', scan = false) => {
     setEditingBill(null);
     setInitialType(type);
+    setAutoOpenScanner(scan);
     setBillModalOpen(true);
   };
 
   const openEditBill = (bill: BillItem) => {
     setEditingBill(bill);
     setInitialType(bill.type);
+    setAutoOpenScanner(false);
     setBillModalOpen(true);
   };
 
@@ -149,12 +153,21 @@ export function BillsReceiptsTab() {
             </div>
             <div className="text-[11px] text-[var(--fg-muted)] mt-1">Payable & Receivable records</div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs gap-1 border-teal-500/40 text-teal-300 hover:bg-teal-500/10 shadow-sm"
+              onClick={() => openNewBill('payable', true)}
+              title="Scan Vendor Bill or Invoice with AI OCR"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-teal-400" /> Scan Bill
+            </Button>
             <Button
               size="sm"
               variant="teal"
               className="text-xs gap-1 shadow-md shadow-teal-500/10"
-              onClick={() => openNewBill('payable')}
+              onClick={() => openNewBill('payable', false)}
             >
               <Plus className="w-4 h-4" /> Create Bill
             </Button>
@@ -409,6 +422,7 @@ export function BillsReceiptsTab() {
         onClose={() => setBillModalOpen(false)}
         initialType={initialType}
         editingBill={editingBill}
+        autoOpenScanner={autoOpenScanner}
       />
 
       <RecordBillPaymentModal

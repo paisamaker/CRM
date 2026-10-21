@@ -30,11 +30,15 @@ export interface IBill extends Document {
   paymentStatus: 'unpaid' | 'partially_paid' | 'paid' | 'cancelled';
   paymentMethod?: string;
   notes?: string;
+  documentHash?: string;
+  scannedDocument?: Types.ObjectId;
+  documentMetadata?: Record<string, unknown>;
   attachment?: {
     name: string;
     url: string;
     mime?: string;
     size?: number;
+    hash?: string;
   };
   payments: IBillPayment[];
   createdBy: Types.ObjectId;
@@ -67,11 +71,15 @@ const billSchema = new Schema<IBill>(
     },
     paymentMethod: String,
     notes: String,
+    documentHash: { type: String, index: true },
+    scannedDocument: { type: Schema.Types.ObjectId, ref: 'ScannedDocument', index: true },
+    documentMetadata: { type: Schema.Types.Mixed },
     attachment: {
       name: String,
       url: String,
       mime: String,
       size: Number,
+      hash: String,
     },
     payments: [
       {
