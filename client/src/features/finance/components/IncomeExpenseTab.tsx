@@ -34,6 +34,7 @@ import { TableShell, EmptyState } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { TransactionModal, type TransactionItem } from './TransactionModal';
 import { syncFinanceQueries } from '../financeSync';
+import { useAuthStore } from '@/stores/auth';
 
 interface Props {
   type: 'revenue' | 'expense';
@@ -41,6 +42,7 @@ interface Props {
 
 export function IncomeExpenseTab({ type }: Props) {
   const qc = useQueryClient();
+  const isCeo = useAuthStore((s) => s.user?.role === 'ceo');
 
   const isIncome = type === 'revenue';
   const label = isIncome ? 'Income' : 'Expense';
@@ -184,146 +186,119 @@ export function IncomeExpenseTab({ type }: Props) {
   };
 
   return (
-    <div className="space-y-6">
-      {/* ── ACTION TOOLBAR ─────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-1">
-        <div className="flex items-center gap-2">
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-            isIncome ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-          }`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${isIncome ? 'bg-emerald-500' : 'bg-rose-500'} animate-pulse`} />
-            {labelPlural} Ledger
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+              isIncome
+                ? 'border-[var(--teal-border)] bg-[var(--teal-soft)] text-[var(--teal-text)]'
+                : 'border-rose-200 bg-rose-50 text-rose-700'
+            }`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${isIncome ? 'bg-[var(--teal)]' : 'bg-rose-500'}`} />
+            {labelPlural} ledger
           </span>
-          <span className="text-xs text-[var(--fg-muted)]">
-            Viewing records for <span className="font-semibold text-[var(--fg-primary)] capitalize">{dateFilter.replace('_', ' ')}</span>
+          <span className="text-xs text-[var(--fg-secondary)]">
+            Period:{' '}
+            <span className="font-semibold capitalize text-[var(--fg)]">{dateFilter.replace(/_/g, ' ')}</span>
           </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs h-9 px-3 gap-1.5 whitespace-nowrap"
-            onClick={handleSync}
-            disabled={isSyncing}
-            title="Instantly refresh and sync ledger data"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-teal-400' : ''}`} />
-            <span>{isSyncing ? 'Syncing…' : 'Sync'}</span>
+          <Button size="sm" variant="outline" className="h-9 gap-1.5 px-3 text-xs" onClick={handleSync} disabled={isSyncing}>
+            <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin text-[var(--brand)]' : ''}`} />
+            {isSyncing ? 'Syncing…' : 'Sync'}
           </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs h-9 px-3 gap-1.5 whitespace-nowrap"
-            onClick={handleExportCSV}
-            title="Export filtered records to CSV"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
+          <Button size="sm" variant="outline" className="h-9 gap-1.5 px-3 text-xs" onClick={handleExportCSV}>
+            <Download className="h-3.5 w-3.5" /> Export
           </Button>
-
           <Button
             size="sm"
             variant="outline"
-            className="text-xs h-9 px-3.5 gap-1.5 border-teal-500/40 text-teal-400 hover:bg-teal-500/10 shadow-xs whitespace-nowrap font-medium"
+            className="h-9 gap-1.5 border-[var(--teal-border)] px-3 text-xs text-[var(--teal-text)] hover:bg-[var(--teal-soft)]"
             onClick={() => {
               setEditingTransaction(null);
               setAutoOpenScanner(true);
               setModalOpen(true);
             }}
-            title="Scan Bill or Receipt with AI OCR"
           >
-            <Sparkles className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-            <span>Scan Bill / Receipt</span>
+            <Sparkles className="h-3.5 w-3.5" /> Scan
           </Button>
-
           <Button
             size="sm"
             variant={isIncome ? 'teal' : 'primary'}
-            className="text-xs h-9 px-3.5 gap-1.5 shadow-md shadow-teal-500/10 whitespace-nowrap font-semibold"
+            className="h-9 gap-1.5 px-3.5 text-xs font-semibold"
             onClick={() => {
               setEditingTransaction(null);
               setAutoOpenScanner(false);
               setModalOpen(true);
             }}
           >
-            <Plus className="w-4 h-4 shrink-0" />
-            <span>Add {label}</span>
+            <Plus className="h-4 w-4" /> Add {label}
           </Button>
         </div>
       </div>
 
-      {/* ── SUMMARY STAT CARDS ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div
-          className={`p-4 rounded-2xl bg-gradient-to-br ${
+          className={`rounded-[var(--radius)] border bg-gradient-to-br via-white to-white p-4 shadow-[var(--shadow-sm)] ${
             isIncome
-              ? 'from-emerald-500/10 via-emerald-500/5 to-transparent border-emerald-500/20'
-              : 'from-rose-500/10 via-rose-500/5 to-transparent border-rose-500/20'
-          } border shadow-sm`}
+              ? 'border-[var(--teal-border)] from-[var(--teal-soft)]'
+              : 'border-rose-200 from-rose-50'
+          }`}
         >
-          <div className="flex items-center justify-between">
-            <span className={`text-xs font-medium ${isIncome ? 'text-emerald-400' : 'text-rose-400'}`}>
-              Total {labelPlural} ({dateFilter.replace('_', ' ')})
+          <div className="flex items-center justify-between gap-2">
+            <span className={`text-xs font-bold uppercase tracking-wide ${isIncome ? 'text-[var(--teal-text)]' : 'text-rose-700'}`}>
+              Total {labelPlural}
             </span>
             {isIncome ? (
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <TrendingUp className="h-4 w-4 text-[var(--teal-text)]" />
             ) : (
-              <TrendingDown className="w-4 h-4 text-rose-400" />
+              <TrendingDown className="h-4 w-4 text-rose-700" />
             )}
           </div>
-          <div className="text-2xl font-bold mt-2 text-[var(--fg-primary)]">
-            {formatCurrency(totalAmount)}
-          </div>
-          <div className="text-[11px] text-[var(--fg-muted)] mt-1">
-            Aggregated from verified database records
+          <div className="mt-2 text-2xl font-bold text-[var(--fg)]">{formatCurrency(totalAmount)}</div>
+          <div className="mt-1 text-[11px] text-[var(--fg-secondary)] capitalize">
+            {dateFilter.replace(/_/g, ' ')} · verified ledger
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent border border-blue-500/20 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-blue-400">Total Transactions</span>
-            <FileSpreadsheet className="w-4 h-4 text-blue-400" />
+        <div className="rounded-[var(--radius)] border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-white p-4 shadow-[var(--shadow-sm)]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-sky-700">Transactions</span>
+            <FileSpreadsheet className="h-4 w-4 text-sky-700" />
           </div>
-          <div className="text-2xl font-bold mt-2 text-[var(--fg-primary)]">
-            {totalCount}
-          </div>
-          <div className="text-[11px] text-[var(--fg-muted)] mt-1">
-            Matches selected period & category filters
-          </div>
+          <div className="mt-2 text-2xl font-bold text-[var(--fg)]">{totalCount}</div>
+          <div className="mt-1 text-[11px] text-[var(--fg-secondary)]">Matching current filters</div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-transparent border border-purple-500/20 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-purple-400">Average Per Transaction</span>
-            <Calculator className="w-4 h-4 text-purple-400" />
+        <div className="rounded-[var(--radius)] border border-[var(--purple-border)] bg-gradient-to-br from-[var(--purple-soft)] via-white to-white p-4 shadow-[var(--shadow-sm)]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-[var(--purple-text)]">Average</span>
+            <Calculator className="h-4 w-4 text-[var(--purple-text)]" />
           </div>
-          <div className="text-2xl font-bold mt-2 text-[var(--fg-primary)]">
+          <div className="mt-2 text-2xl font-bold text-[var(--fg)]">
             {formatCurrency(totalCount > 0 ? totalAmount / totalCount : 0)}
           </div>
-          <div className="text-[11px] text-[var(--fg-muted)] mt-1">
-            Mean {label.toLowerCase()} ticket size
-          </div>
+          <div className="mt-1 text-[11px] text-[var(--fg-secondary)]">Mean {label.toLowerCase()} size</div>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-3 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-2xl">
-        {/* Quick Date Filters */}
-        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-[var(--surface-sunken)] rounded-xl border border-[var(--border-subtle)]">
+      <div className="flex flex-col items-stretch justify-between gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-sm)] lg:flex-row lg:items-center">
+        <div className="flex flex-wrap items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] p-1">
           {(['all', 'today', 'this_week', 'this_month', 'this_year', 'custom'] as const).map((period) => (
             <button
               key={period}
               type="button"
-              className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all capitalize ${
+              className={`rounded-md px-2.5 py-1.5 text-xs font-medium capitalize transition ${
                 dateFilter === period
-                  ? 'bg-[var(--accent)] text-white shadow-sm'
-                  : 'text-[var(--fg-muted)] hover:text-[var(--fg-primary)]'
+                  ? 'bg-[var(--brand)] text-white shadow-sm'
+                  : 'text-[var(--fg-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--fg)]'
               }`}
               onClick={() => setDateFilter(period)}
             >
-              {period.replace('_', ' ')}
+              {period.replace(/_/g, ' ')}
             </button>
           ))}
         </div>
@@ -513,30 +488,37 @@ export function IncomeExpenseTab({ type }: Props) {
                             <Eye className="w-3.5 h-3.5" />
                           </button>
 
-                          <button
-                            type="button"
-                            className="p-1 rounded text-[var(--fg-muted)] hover:text-[var(--fg-primary)] hover:bg-[var(--surface-sunken)] transition-colors"
-                            onClick={() => {
-                              setEditingTransaction(tx);
-                              setModalOpen(true);
-                            }}
-                            title="Edit Transaction"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-
-                          <button
-                            type="button"
-                            className="p-1 rounded text-[var(--fg-muted)] hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                            onClick={() => {
-                              if (confirm(`Are you sure you want to reverse/delete this ${label.toLowerCase()} of ${formatCurrency(tx.amount)}?`)) {
-                                deleteMutation.mutate(tx._id);
-                              }
-                            }}
-                            title="Reverse / Delete"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {isCeo ? (
+                            <>
+                              <button
+                                type="button"
+                                className="rounded p-1 text-[var(--fg-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--fg)]"
+                                onClick={() => {
+                                  setEditingTransaction(tx);
+                                  setModalOpen(true);
+                                }}
+                                title="Update transaction (CEO)"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded p-1 text-[var(--fg-secondary)] transition-colors hover:bg-rose-50 hover:text-rose-700"
+                                onClick={() => {
+                                  if (
+                                    confirm(
+                                      `Delete this ${label.toLowerCase()} of ${formatCurrency(tx.amount)}? Bank balance will be reversed if posted.`
+                                    )
+                                  ) {
+                                    deleteMutation.mutate(tx._id);
+                                  }
+                                }}
+                                title="Delete transaction (CEO)"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

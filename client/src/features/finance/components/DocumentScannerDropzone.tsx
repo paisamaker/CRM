@@ -184,7 +184,8 @@ export function DocumentScannerDropzone({ onScanComplete, onCancel, compact = fa
       setProgressPercent(20);
 
       const formData = new FormData();
-      formData.append('document', file);
+      // Must match server multer field name: scanUpload.single('file')
+      formData.append('file', file);
 
       // Transition to processing status message
       setTimeout(() => {
@@ -194,8 +195,9 @@ export function DocumentScannerDropzone({ onScanComplete, onCancel, compact = fa
       }, 900);
 
       const response = await api.post('/finance/documents/scan', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        // Do NOT set Content-Type manually — axios must add the multipart boundary
         signal: abortControllerRef.current.signal,
+        timeout: 120_000,
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {
             const pct = Math.round((progressEvent.loaded * 40) / progressEvent.total);

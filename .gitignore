@@ -5,19 +5,21 @@ node_modules/
 dist/
 dist-ssr/
 build/
+out/
 client/dist/
 server/dist/
 
 # Environment files and secrets
 .env
-.env.local
-.env.*.local
-.env.development.local
-.env.test.local
-.env.production.local
-*.env
-!*.env.example
+.env.*
 !.env.example
+!**/.env.example
+*.pem
+*.p12
+*.key
+secrets/
+credentials.json
+service-account*.json
 
 # Logs and debugging
 logs/
@@ -28,20 +30,45 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Test coverage
+# Test / coverage
 coverage/
+.nyc_output/
+playwright-report/
+test-results/
+*.lcov
 
-# Vite and TypeScript caches
+# Caches and tool outputs
 .vite/
+.turbo/
+.cache/
 *.tsbuildinfo
+*.eslintcache
+.parcel-cache/
+.rollup.cache/
+node_modules/.tmp/
+client/node_modules/.tmp/
+*.tmp
+*.temp
+tmp/
+temp/
+.temp/
 
-# Uploads and temporary media
+# OCR / Tesseract language packs (large, downloaded at runtime)
+*.traineddata
+server/eng.traineddata
+tessdata/
+
+# Uploads and local media
 uploads/
 server/uploads/
+public/uploads/
+*.local.bin
 
-# OS and IDE files
+# OS and IDE
 .DS_Store
 Thumbs.db
+Desktop.ini
+ehthumbs.db
 .idea/
 .vscode/
 *.suo
@@ -49,3 +76,11 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+*~
+
+# Optional local tooling
+.vercel/
+.cursor/
+*.pid
+*.seed
+*.pid.lock

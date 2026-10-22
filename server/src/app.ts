@@ -47,23 +47,22 @@ export function createApp() {
 
         const normalizedOrigin = origin.replace(/\/+$/, '');
 
-        // Check if origin matches any explicitly configured CLIENT_URL
+        // Explicit CLIENT_URL list (comma-separated) — required in production
         if (env.clientOrigins.includes(normalizedOrigin)) {
           callback(null, true);
           return;
         }
 
-        // Automatically allow any Vercel domain (*.vercel.app)
-        const isVercelDomain = /^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(normalizedOrigin);
-        if (isVercelDomain) {
-          callback(null, true);
-          return;
-        }
-
-        // Allow localhost on any port in development
-        if (env.NODE_ENV !== 'production' && /^http:\/\/localhost(:\d+)?$/.test(normalizedOrigin)) {
-          callback(null, true);
-          return;
+        // Dev-only: localhost + Vercel preview wildcards. In production, add each
+        // preview URL to CLIENT_URL instead of allowing any *.vercel.app origin.
+        if (env.NODE_ENV !== 'production') {
+          if (
+            /^http:\/\/localhost(:\d+)?$/.test(normalizedOrigin) ||
+            /^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(normalizedOrigin)
+          ) {
+            callback(null, true);
+            return;
+          }
         }
 
         // Deny without throwing — throwing surfaces as an unhandled 500 in some CORS setups

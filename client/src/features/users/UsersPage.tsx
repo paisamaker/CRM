@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '@/lib/api';
-import { PageHeader, TableShell } from '@/components/ui/Card';
+import { PageHeader, TableShell, Skeleton } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Badge, statusTone } from '@/components/ui/Badge';
@@ -69,7 +69,7 @@ export function UsersPage() {
   const canDelete = role === 'ceo' || can('users', 'delete');
   const canResetPassword = role === 'ceo' || can('users', 'manage');
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: async () => (await api.get('/users', { params: { limit: 100 } })).data.data,
   });
@@ -234,7 +234,18 @@ export function UsersPage() {
             </tr>
           </thead>
           <tbody>
-            {(data?.items || []).map((u: UserRow) => {
+            {isLoading &&
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={`sk-${i}`}>
+                  {Array.from({ length: 8 }).map((__, j) => (
+                    <td key={j}>
+                      <Skeleton className="h-4 w-full" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            {!isLoading &&
+              (data?.items || []).map((u: UserRow) => {
               const manageable = canManageTarget(u);
               return (
                 <tr

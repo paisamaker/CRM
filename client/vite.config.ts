@@ -39,11 +39,14 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5001',
         changeOrigin: true,
+        // Document OCR / Gemini can exceed default proxy timeouts
+        timeout: 180_000,
+        proxyTimeout: 180_000,
       },
       '/socket.io': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5001',
         ws: true,
         changeOrigin: true,
       },

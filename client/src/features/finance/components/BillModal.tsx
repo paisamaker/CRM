@@ -213,9 +213,15 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill,
     const party = (newType === 'payable' ? data.vendor?.name : data.customer?.name) || '';
     const invoiceNum = data.invoiceNumber || data.billNumber || form.billNumber;
 
+    const resolvedAmount =
+      (typeof data.grandTotal === 'number' && data.grandTotal > 0 && data.grandTotal) ||
+      (typeof data.amountPaid === 'number' && data.amountPaid > 0 && data.amountPaid) ||
+      (typeof data.subtotal === 'number' && data.subtotal > 0 && data.subtotal) ||
+      null;
+
     // Track uncertainty
     const uncertain: Record<string, boolean> = {};
-    if (!data.grandTotal || (conf.fields['grandTotal'] && conf.fields['grandTotal'] < 0.65)) {
+    if (!resolvedAmount || (conf.fields['grandTotal'] && conf.fields['grandTotal'] < 0.65)) {
       uncertain['amount'] = true;
     }
     if (!data.documentDate || (conf.fields['documentDate'] && conf.fields['documentDate'] < 0.65)) {
@@ -223,24 +229,37 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill,
     }
     setUncertainFields(uncertain);
 
+    const rawMethod = (data.paymentMethod || '').toLowerCase();
+    let paymentMethod = data.paymentMethod || '';
+    if (/upi|gpay|phonepe|paytm|bhim/.test(rawMethod)) paymentMethod = 'UPI';
+    else if (/card|visa|master|rupay|credit|debit/.test(rawMethod)) paymentMethod = 'Credit Card';
+    else if (/cash/.test(rawMethod)) paymentMethod = 'Cash';
+    else if (/neft|rtgs|imps|bank|transfer/.test(rawMethod)) paymentMethod = 'Bank Transfer';
+
     setForm((prev) => ({
       ...prev,
       type: newType,
       billNumber: invoiceNum,
       partyName: party || prev.partyName,
-      title: `${invoiceNum}${party ? ` - ${party}` : ''}`,
+      title:
+        invoiceNum || party
+          ? `${invoiceNum || 'Bill'}${party ? ` - ${party}` : ''}`
+          : resolvedAmount
+            ? `${matchedCategory} ₹${resolvedAmount}`
+            : prev.title,
       category: matchedCategory,
-      amount: data.grandTotal ? String(data.grandTotal) : data.subtotal ? String(data.subtotal) : prev.amount,
-      taxAmount: data.totalTax ? String(data.totalTax) : '0',
+      amount: resolvedAmount != null ? String(resolvedAmount) : prev.amount,
+      taxAmount: data.totalTax != null && data.totalTax > 0 ? String(data.totalTax) : prev.taxAmount || '0',
       billDate: data.documentDate || prev.billDate,
       dueDate: data.dueDate || prev.dueDate,
-      paymentStatus: (data.paymentStatus as any) || 'unpaid',
-      paymentMethod: data.paymentMethod || prev.paymentMethod,
-      description: data.description || (data.vendor?.address ? `Vendor Address: ${data.vendor.address}` : prev.description),
+      paymentStatus: (data.paymentStatus as any) || (/(transaction|payment)\s*successful/i.test(data.description || '') ? 'paid' : 'unpaid'),
+      paymentMethod: paymentMethod || prev.paymentMethod || 'UPI',
+      description: data.description || data.notes || (data.vendor?.address ? `Vendor Address: ${data.vendor.address}` : prev.description),
       notes: [
         prev.notes,
         data.vendor?.gstin ? `Vendor GSTIN: ${data.vendor.gstin}` : '',
         data.customer?.gstin ? `Customer GSTIN: ${data.customer.gstin}` : '',
+        result.extractionEngine ? `OCR: ${result.extractionEngine}` : '',
       ]
         .filter(Boolean)
         .join(' | '),

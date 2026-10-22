@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { authenticate, authorize } from '../../middleware/auth.js';
+import { authenticate, authorize, requireRoles } from '../../middleware/auth.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { upload, finalizeUploadedFile } from '../../middleware/upload.js';
 import { Bill, IBill } from '../../models/Bill.js';
@@ -10,6 +10,8 @@ import { AppError, ForbiddenError, NotFoundError } from '../../utils/AppError.js
 import { writeAudit } from '../../utils/audit.js';
 import { paginate } from '../../utils/pagination.js';
 import { roundMoney, addMoney, subMoney } from '../../utils/money.js';
+import { adjustBankBalance } from '../../utils/bankLedger.js';
+import { memoryCache } from '../../utils/cache.js';
 import { startOfDay, endOfDay } from 'date-fns';
 import { flexibleDateSchema, flexibleDateSchemaOptional } from './routes.js';
 
@@ -63,52 +65,61 @@ router.get(
 
     const data = await paginate(Bill, filter, req, ['client', 'vendor', 'createdBy']);
 
-    // Summary calculation for bills
-    const [payableStats, receivableStats] = await Promise.all([
-      Bill.aggregate([
-        { $match: { type: 'payable', paymentStatus: { $ne: 'cancelled' } } },
-        {
-          $group: {
-            _id: null,
-            totalPayable: { $sum: '$totalAmount' },
-            paidPayable: { $sum: '$paidAmount' },
-            outstandingPayable: { $sum: '$outstandingAmount' },
-            count: { $sum: 1 },
+    const summaryCacheKey = 'bills:summary:v1';
+    let summary = memoryCache.get<{
+      payable: Record<string, number>;
+      receivable: Record<string, number>;
+    }>(summaryCacheKey);
+
+    if (!summary) {
+      const [payableStats, receivableStats] = await Promise.all([
+        Bill.aggregate([
+          { $match: { type: 'payable', paymentStatus: { $ne: 'cancelled' } } },
+          {
+            $group: {
+              _id: null,
+              totalPayable: { $sum: '$totalAmount' },
+              paidPayable: { $sum: '$paidAmount' },
+              outstandingPayable: { $sum: '$outstandingAmount' },
+              count: { $sum: 1 },
+            },
           },
-        },
-      ]),
-      Bill.aggregate([
-        { $match: { type: 'receivable', paymentStatus: { $ne: 'cancelled' } } },
-        {
-          $group: {
-            _id: null,
-            totalReceivable: { $sum: '$totalAmount' },
-            paidReceivable: { $sum: '$paidAmount' },
-            outstandingReceivable: { $sum: '$outstandingAmount' },
-            count: { $sum: 1 },
+        ]),
+        Bill.aggregate([
+          { $match: { type: 'receivable', paymentStatus: { $ne: 'cancelled' } } },
+          {
+            $group: {
+              _id: null,
+              totalReceivable: { $sum: '$totalAmount' },
+              paidReceivable: { $sum: '$paidAmount' },
+              outstandingReceivable: { $sum: '$outstandingAmount' },
+              count: { $sum: 1 },
+            },
           },
+        ]),
+      ]);
+      summary = {
+        payable: payableStats[0] || {
+          totalPayable: 0,
+          paidPayable: 0,
+          outstandingPayable: 0,
+          count: 0,
         },
-      ]),
-    ]);
+        receivable: receivableStats[0] || {
+          totalReceivable: 0,
+          paidReceivable: 0,
+          outstandingReceivable: 0,
+          count: 0,
+        },
+      };
+      memoryCache.set(summaryCacheKey, summary, 20);
+    }
 
     res.json({
       success: true,
       data: {
         ...data,
-        summary: {
-          payable: payableStats[0] || {
-            totalPayable: 0,
-            paidPayable: 0,
-            outstandingPayable: 0,
-            count: 0,
-          },
-          receivable: receivableStats[0] || {
-            totalReceivable: 0,
-            paidReceivable: 0,
-            outstandingReceivable: 0,
-            count: 0,
-          },
-        },
+        summary,
       },
     });
   })
@@ -208,6 +219,7 @@ router.post(
       };
     }
 
+    memoryCache.delPrefix('bills:');
     const bill = await Bill.create({
       title,
       billNumber,
@@ -260,9 +272,10 @@ router.post(
   })
 );
 
-// PATCH /api/v1/finance/bills/:id
+// PATCH /api/v1/finance/bills/:id — CEO only
 router.patch(
   '/:id',
+  requireRoles('ceo'),
   authorize('invoices', 'update'),
   upload.single('attachment'),
   asyncHandler(async (req: Request, res: Response) => {
@@ -422,14 +435,15 @@ router.post(
       createdBy: req.user!.id,
     });
 
-    // Adjust bank account balance safely
     if (bankAccount) {
-      if (isPayable) {
-        bankAccount.balance = subMoney(bankAccount.balance, paymentAmount);
-      } else {
-        bankAccount.balance = addMoney(bankAccount.balance, paymentAmount);
-      }
-      await bankAccount.save();
+      await adjustBankBalance({
+        bankAccountId: String(bankAccount._id),
+        amount: paymentAmount,
+        direction: isPayable ? 'debit' : 'credit',
+        preferPrimary: false,
+      });
+      memoryCache.delPrefix('finance');
+      memoryCache.delPrefix('bills:');
     }
 
     // Update bill payment array & outstanding balance
@@ -477,9 +491,10 @@ router.post(
   })
 );
 
-// DELETE /api/v1/finance/bills/:id (Cancels or deletes safely)
+// DELETE /api/v1/finance/bills/:id — CEO only (cancels or deletes safely)
 router.delete(
   '/:id',
+  requireRoles('ceo'),
   authorize('invoices', 'delete'),
   asyncHandler(async (req, res) => {
     const bill = await Bill.findById(req.params.id);
@@ -508,6 +523,7 @@ router.delete(
 
     // If completely unpaid, safely delete
     await Bill.findByIdAndDelete(req.params.id);
+    memoryCache.delPrefix('bills:');
 
     await writeAudit({
       actor: req.user!.id,

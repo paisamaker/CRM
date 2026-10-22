@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Search, Plus, Building2, Mail, Briefcase, Calendar, UserCheck } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
-import { PageHeader, Card } from '@/components/ui/Card';
+import { PageHeader, Card, Skeleton } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge, statusTone } from '@/components/ui/Badge';
 import { Input, Label } from '@/components/ui/Input';
@@ -17,7 +17,7 @@ export function ClientsPage() {
   const [search, setSearch] = useState('');
   const [form, setForm] = useState({ name: '', company: '', email: '', industry: '' });
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['clients', search],
     queryFn: async () => (await api.get('/clients', { params: { search, limit: 50 } })).data.data,
   });
@@ -73,7 +73,22 @@ export function ClientsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {(data?.items || []).map((c: {
+        {isLoading &&
+          Array.from({ length: 6 }).map((_, i) => (
+            <Card key={`sk-${i}`} className="space-y-3 p-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-11 w-11 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+              </div>
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-3/4" />
+            </Card>
+          ))}
+        {!isLoading &&
+          (data?.items || []).map((c: {
           _id: string;
           name: string;
           company: string;
@@ -123,7 +138,7 @@ export function ClientsPage() {
             </div>
           </Card>
         ))}
-        {!data?.items?.length ? (
+        {!isLoading && !data?.items?.length ? (
           <div className="col-span-full rounded-2xl border border-dashed border-[var(--border)] p-12 text-center">
             <Building2 className="mx-auto h-12 w-12 text-[var(--fg-muted)] opacity-50" />
             <h3 className="mt-3 text-sm font-bold text-[var(--fg)]">No clients found</h3>

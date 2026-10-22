@@ -14,6 +14,8 @@ import {
   CreditCard,
   Building2,
   AlertCircle,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -21,9 +23,12 @@ import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
 import { TableShell, EmptyState } from '@/components/ui/Card';
 import { PaySalaryModal, type SalaryItem } from './PaySalaryModal';
+import { useAuthStore } from '@/stores/auth';
+import { syncFinanceQueries } from '../financeSync';
 
 export function SalaryManagementTab() {
   const qc = useQueryClient();
+  const isCeo = useAuthStore((s) => s.user?.role === 'ceo');
 
   const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7)); // "YYYY-MM"
   const [statusFilter, setStatusFilter] = useState('all');
@@ -38,7 +43,7 @@ export function SalaryManagementTab() {
     queryFn: async () => {
       const params: any = { period };
       if (statusFilter !== 'all') params.status = statusFilter;
-      return (await api.get('/finance/salaries', { params })).data.data;
+      return (await api.get('/finance/salaries/records', { params })).data.data;
     },
   });
 
@@ -68,7 +73,7 @@ export function SalaryManagementTab() {
         deductions: item.deductions || 0,
         netSalary: item.net || 0,
         paymentStatus: item.status === 'disbursed' ? 'paid' : 'pending',
-        paymentDate: item.paidAt,
+        paymentDate: item.paidOn || item.paidAt,
         paymentMethod: item.paymentMethod,
         transactionRef: item.transactionRef,
         notes: item.notes,
@@ -100,79 +105,72 @@ export function SalaryManagementTab() {
     }
   };
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/finance/salaries/${id}`)).data,
+    onSuccess: async () => {
+      toast.success('Salary record deleted and ledger adjusted');
+      await syncFinanceQueries(qc);
+    },
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err) || 'Failed to delete salary record');
+    },
+  });
+
   return (
-    <div className="space-y-6">
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/20 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-emerald-400">Total Salary Paid ({period})</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-[var(--radius)] border border-[var(--teal-border)] bg-gradient-to-br from-[var(--teal-soft)] via-white to-white p-4 shadow-[var(--shadow-sm)]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-[var(--teal-text)]">
+              Salary paid
+            </span>
+            <CheckCircle2 className="h-4 w-4 text-[var(--teal-text)]" />
           </div>
-          <div className="text-2xl font-bold mt-2 text-[var(--fg-primary)]">
-            {formatCurrency(summary.totalPaid)}
-          </div>
-          <div className="text-[11px] text-[var(--fg-muted)] mt-1">Disbursed to employees & counted in expenses</div>
+          <div className="mt-2 text-2xl font-bold text-[var(--fg)]">{formatCurrency(summary.totalPaid)}</div>
+          <div className="mt-1 text-[11px] text-[var(--fg-secondary)]">{period} · counted in expenses</div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-amber-400">Pending Salary Liability</span>
-            <Clock className="w-4 h-4 text-amber-400" />
+        <div className="rounded-[var(--radius)] border border-[var(--orange-border)] bg-gradient-to-br from-[var(--orange-soft)] via-white to-white p-4 shadow-[var(--shadow-sm)]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-[var(--orange-text)]">
+              Pending liability
+            </span>
+            <Clock className="h-4 w-4 text-[var(--orange-text)]" />
           </div>
-          <div className="text-2xl font-bold mt-2 text-[var(--fg-primary)]">
-            {formatCurrency(summary.totalPending)}
-          </div>
-          <div className="text-[11px] text-[var(--fg-muted)] mt-1">Outstanding payroll obligations</div>
+          <div className="mt-2 text-2xl font-bold text-[var(--fg)]">{formatCurrency(summary.totalPending)}</div>
+          <div className="mt-1 text-[11px] text-[var(--fg-secondary)]">Outstanding payroll obligations</div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent border border-blue-500/20 shadow-sm flex items-center justify-between">
-          <div>
-            <div className="text-xs font-medium text-blue-400">Payroll Employees</div>
-            <div className="text-2xl font-bold mt-2 text-[var(--fg-primary)]">
-              {summary.totalEmployees}
-            </div>
-            <div className="text-[11px] text-[var(--fg-muted)] mt-1">Active team payroll count</div>
+        <div className="flex flex-col justify-between gap-3 rounded-[var(--radius)] border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-white p-4 shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
+          <div className="min-w-0">
+            <div className="text-xs font-bold uppercase tracking-wide text-sky-700">Employees</div>
+            <div className="mt-2 text-2xl font-bold text-[var(--fg)]">{summary.totalEmployees}</div>
+            <div className="mt-1 text-[11px] text-[var(--fg-secondary)]">Active payroll count</div>
           </div>
-          <Button
-            size="sm"
-            variant="teal"
-            className="text-xs gap-1 shadow-md shadow-teal-500/10"
-            onClick={() => handleOpenPay()}
-          >
-            <Plus className="w-4 h-4" /> Process Salary
+          <Button size="sm" variant="teal" className="shrink-0 gap-1 text-xs" onClick={() => handleOpenPay()}>
+            <Plus className="h-4 w-4" /> Process salary
           </Button>
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-2xl">
+      <div className="flex flex-col items-stretch justify-between gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-sm)] md:flex-row md:items-center">
         <div className="flex flex-wrap items-center gap-2">
-          {/* Period selector */}
           <div className="flex items-center gap-1.5">
-            <Calendar className="w-4 h-4 text-[var(--fg-muted)]" />
-            <Input
-              type="month"
-              className="w-40 text-xs"
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-            />
+            <Calendar className="h-4 w-4 text-[var(--fg-secondary)]" />
+            <Input type="month" className="w-40 text-xs" value={period} onChange={(e) => setPeriod(e.target.value)} />
           </div>
-
-          {/* Status selector */}
           <div className="w-36">
             <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="all">All Statuses</option>
-              <option value="disbursed">Paid (Disbursed)</option>
+              <option value="all">All statuses</option>
+              <option value="disbursed">Paid</option>
               <option value="approved">Pending</option>
               <option value="draft">Draft</option>
             </Select>
           </div>
         </div>
 
-        {/* Search */}
         <div className="relative w-full md:w-64">
-          <Search className="w-4 h-4 text-[var(--fg-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--fg-secondary)]" />
           <Input
             className="pl-9 text-xs"
             placeholder="Search employee name or ID…"
@@ -235,35 +233,31 @@ export function SalaryManagementTab() {
                       <td className="!text-right text-xs">{formatCurrency(item.base || 0)}</td>
 
                       {/* Allowances */}
-                      <td className="!text-right text-xs text-emerald-400">
+                      <td className="!text-right text-xs font-medium text-[var(--teal-text)]">
                         +{formatCurrency(item.stipend || 0)}
                       </td>
 
-                      {/* Bonuses */}
-                      <td className="!text-right text-xs text-emerald-400">
+                      <td className="!text-right text-xs font-medium text-[var(--teal-text)]">
                         +{formatCurrency(item.incentive || 0)}
                       </td>
 
-                      {/* Deductions */}
-                      <td className="!text-right text-xs text-rose-400">
+                      <td className="!text-right text-xs font-medium text-rose-700">
                         -{formatCurrency(item.deductions || 0)}
                       </td>
 
-                      {/* Net Salary */}
-                      <td className="!text-right font-bold text-sm text-[var(--fg-primary)]">
+                      <td className="!text-right text-sm font-bold text-[var(--fg)]">
                         {formatCurrency(item.net || 0)}
                       </td>
 
-                      {/* Status */}
                       <td>
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${
+                          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
                             isPaid
-                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                              ? 'border-[var(--teal-border)] bg-[var(--teal-soft)] text-[var(--teal-text)]'
+                              : 'border-[var(--orange-border)] bg-[var(--orange-soft)] text-[var(--orange-text)]'
                           }`}
                         >
-                          {isPaid ? 'Paid' : 'Pending Liability'}
+                          {isPaid ? 'Paid' : 'Pending'}
                         </span>
                       </td>
 
@@ -271,7 +265,7 @@ export function SalaryManagementTab() {
                       <td>
                         {isPaid ? (
                           <div className="text-xs">
-                            <div className="text-[var(--fg-primary)]">{formatDate(item.paidAt)}</div>
+                            <div className="text-[var(--fg)]">{item.paidOn || item.paidAt ? formatDate(item.paidOn || item.paidAt) : '—'}</div>
                             <div className="text-[10px] text-[var(--fg-muted)] truncate max-w-[120px]">
                               {item.paymentMethod} {item.transactionRef ? `(${item.transactionRef})` : ''}
                             </div>
@@ -281,7 +275,6 @@ export function SalaryManagementTab() {
                         )}
                       </td>
 
-                      {/* Actions */}
                       <td className="!text-right">
                         <div className="inline-flex items-center gap-1.5">
                           {!isPaid ? (
@@ -297,13 +290,46 @@ export function SalaryManagementTab() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-7 px-2 text-[11px] text-teal-400 border-teal-500/30 hover:bg-teal-500/10"
+                              className="h-7 border-[var(--teal-border)] px-2 text-[11px] text-[var(--teal-text)] hover:bg-[var(--teal-soft)]"
                               onClick={() => handleDownloadSlip(item._id, emp?.name || 'Employee', item.period)}
                               title="Download Official Pay Slip PDF"
                             >
-                              <Download className="w-3 h-3 mr-1" /> Slip
+                              <Download className="h-3 w-3 mr-1" /> Slip
                             </Button>
                           )}
+
+                          {isCeo ? (
+                            <>
+                              <button
+                                type="button"
+                                className="rounded p-1 text-[var(--fg-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--fg)]"
+                                onClick={() => handleOpenPay(item)}
+                                title="Update salary (CEO)"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded p-1 text-[var(--fg-secondary)] transition-colors hover:bg-rose-50 hover:text-rose-700"
+                                disabled={deleteMutation.isPending}
+                                onClick={() => {
+                                  if (
+                                    confirm(
+                                      `Delete salary for ${emp?.name || 'employee'} (${item.period})?` +
+                                        (isPaid
+                                          ? ' The linked expense and bank balance will be reversed.'
+                                          : '')
+                                    )
+                                  ) {
+                                    deleteMutation.mutate(item._id);
+                                  }
+                                }}
+                                title="Delete salary (CEO)"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

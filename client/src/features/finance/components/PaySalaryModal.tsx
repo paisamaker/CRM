@@ -60,57 +60,102 @@ export function PaySalaryModal({ open, onClose, salaryItem }: Props) {
     notes: '',
   });
 
-  // Fetch employees
-  const { data: usersData } = useQuery({
-    queryKey: ['users-list'],
-    queryFn: async () => (await api.get('/users', { params: { limit: 100 } })).data.data,
+  // Payroll-scoped employee list (finance/CEO can read; /users is CEO-only)
+  const { data: salaryMaster, isLoading: employeesLoading } = useQuery({
+    queryKey: ['finance-salary-employees'],
+    queryFn: async () => (await api.get('/finance/salaries')).data.data,
+    enabled: open,
   });
 
-  // Fetch bank accounts
   const { data: bankAccounts } = useQuery({
     queryKey: ['bank-accounts'],
     queryFn: async () => (await api.get('/finance/bank-accounts')).data.data || [],
+    enabled: open,
   });
 
-  const employees = (usersData?.users || []).filter((u: any) => u.isActive !== false);
+  type PayrollEmployee = {
+    _id: string;
+    name: string;
+    email?: string;
+    role?: string;
+    employeeId?: string;
+    department?: string;
+    status?: string;
+    salary?: { base?: number; stipend?: number; incentive?: number };
+  };
+
+  const employees: PayrollEmployee[] = (salaryMaster?.items || []).filter(
+    (u: PayrollEmployee) => u.status === 'active' || u.status === 'invited' || !u.status
+  );
+
+  const selectEmployee = (empId: string) => {
+    const emp = employees.find((u) => u._id === empId);
+    setForm((prev) => ({
+      ...prev,
+      employeeId: empId,
+      basicSalary: emp?.salary?.base != null ? String(emp.salary.base) : prev.basicSalary,
+      allowances: emp?.salary?.stipend != null ? String(emp.salary.stipend) : prev.allowances,
+      bonuses: emp?.salary?.incentive != null ? String(emp.salary.incentive) : prev.bonuses,
+    }));
+  };
 
   useEffect(() => {
-    if (open) {
-      if (salaryItem) {
-        setForm({
-          employeeId: salaryItem.employeeId || '',
-          period: salaryItem.period || new Date().toISOString().slice(0, 7),
-          basicSalary: String(salaryItem.basicSalary ?? ''),
-          allowances: String(salaryItem.allowances ?? 0),
-          bonuses: String(salaryItem.bonuses ?? 0),
-          deductions: String(salaryItem.deductions ?? 0),
-          paymentStatus: salaryItem.paymentStatus || 'paid',
-          paymentDate: salaryItem.paymentDate
-            ? new Date(salaryItem.paymentDate).toISOString().slice(0, 10)
-            : new Date().toISOString().slice(0, 10),
-          paymentMethod: salaryItem.paymentMethod || 'Bank Transfer',
-          bankAccountId: bankAccounts?.[0]?._id || '',
-          transactionRef: salaryItem.transactionRef || '',
-          notes: salaryItem.notes || '',
-        });
-      } else {
-        setForm({
-          employeeId: employees[0]?._id || '',
-          period: new Date().toISOString().slice(0, 7),
-          basicSalary: '',
-          allowances: '0',
-          bonuses: '0',
-          deductions: '0',
-          paymentStatus: 'paid',
-          paymentDate: new Date().toISOString().slice(0, 10),
-          paymentMethod: 'Bank Transfer',
-          bankAccountId: bankAccounts?.[0]?._id || '',
-          transactionRef: '',
-          notes: '',
-        });
-      }
+    if (!open) return;
+    if (salaryItem) {
+      setForm({
+        employeeId: salaryItem.employeeId || '',
+        period: salaryItem.period || new Date().toISOString().slice(0, 7),
+        basicSalary: String(salaryItem.basicSalary ?? ''),
+        allowances: String(salaryItem.allowances ?? 0),
+        bonuses: String(salaryItem.bonuses ?? 0),
+        deductions: String(salaryItem.deductions ?? 0),
+        paymentStatus: salaryItem.paymentStatus || 'paid',
+        paymentDate: salaryItem.paymentDate
+          ? new Date(salaryItem.paymentDate).toISOString().slice(0, 10)
+          : new Date().toISOString().slice(0, 10),
+        paymentMethod: salaryItem.paymentMethod || 'Bank Transfer',
+        bankAccountId: '',
+        transactionRef: salaryItem.transactionRef || '',
+        notes: salaryItem.notes || '',
+      });
+      return;
     }
-  }, [open, salaryItem, employees.length, bankAccounts]);
+    setForm({
+      employeeId: '',
+      period: new Date().toISOString().slice(0, 7),
+      basicSalary: '',
+      allowances: '0',
+      bonuses: '0',
+      deductions: '0',
+      paymentStatus: 'paid',
+      paymentDate: new Date().toISOString().slice(0, 10),
+      paymentMethod: 'Bank Transfer',
+      bankAccountId: '',
+      transactionRef: '',
+      notes: '',
+    });
+  }, [open, salaryItem]);
+
+  // Fill employee + bank defaults once lists arrive (without wiping edits)
+  useEffect(() => {
+    if (!open || salaryItem || !employees.length) return;
+    setForm((prev) => {
+      if (prev.employeeId) {
+        return prev.bankAccountId || !bankAccounts?.[0]?._id
+          ? prev
+          : { ...prev, bankAccountId: bankAccounts[0]._id };
+      }
+      const first = employees[0];
+      return {
+        ...prev,
+        employeeId: first._id,
+        basicSalary: first.salary?.base != null ? String(first.salary.base) : prev.basicSalary,
+        allowances: String(first.salary?.stipend ?? prev.allowances),
+        bonuses: String(first.salary?.incentive ?? prev.bonuses),
+        bankAccountId: prev.bankAccountId || bankAccounts?.[0]?._id || '',
+      };
+    });
+  }, [open, salaryItem, employees.length, bankAccounts?.[0]?._id]);
 
   const basic = Number(form.basicSalary) || 0;
   const allowances = Number(form.allowances) || 0;
@@ -204,23 +249,29 @@ export function PaySalaryModal({ open, onClose, salaryItem }: Props) {
             <Label>Select Employee *</Label>
             <Select
               value={form.employeeId}
-              disabled={!!salaryItem?.employeeId}
-              onChange={(e) => {
-                const emp = employees.find((u: any) => u._id === e.target.value);
-                setForm({
-                  ...form,
-                  employeeId: e.target.value,
-                  basicSalary: emp?.compensation?.baseSalary ? String(emp.compensation.baseSalary) : form.basicSalary,
-                });
-              }}
+              disabled={!!salaryItem?.employeeId || employeesLoading}
+              onChange={(e) => selectEmployee(e.target.value)}
             >
-              <option value="">Select Employee</option>
-              {employees.map((emp: any) => (
+              <option value="">
+                {employeesLoading
+                  ? 'Loading employees…'
+                  : employees.length
+                    ? 'Select Employee'
+                    : 'No employees available'}
+              </option>
+              {employees.map((emp) => (
                 <option key={emp._id} value={emp._id}>
-                  {emp.name} ({emp.employeeId || emp.role})
+                  {emp.name}
+                  {emp.employeeId ? ` (${emp.employeeId})` : emp.role ? ` · ${emp.role}` : ''}
+                  {emp.salary?.base ? ` · ₹${Number(emp.salary.base).toLocaleString('en-IN')}` : ''}
                 </option>
               ))}
             </Select>
+            {!employeesLoading && employees.length === 0 ? (
+              <p className="mt-1 text-[11px] text-[var(--fg-secondary)]">
+                Add active employees under Team &amp; Roles first.
+              </p>
+            ) : null}
           </div>
 
           <div>

@@ -6,35 +6,49 @@ import { verifyAccessToken } from '../utils/tokens.js';
 import { logger } from '../utils/logger.js';
 import { Conversation } from '../models/Conversation.js';
 import { ChatMessage } from '../models/ChatMessage.js';
+import { User } from '../models/User.js';
 let io: Server | null = null;
+
+function isAllowedOrigin(origin: string): boolean {
+  const norm = origin.replace(/\/+$/, '');
+  if (env.clientOrigins.includes(norm)) return true;
+  if (env.NODE_ENV !== 'production' && /^http:\/\/localhost(:\d+)?$/.test(norm)) return true;
+  // Preview wildcards only outside production (add preview URLs to CLIENT_URL in prod)
+  if (env.NODE_ENV !== 'production' && /^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(norm)) {
+    return true;
+  }
+  return false;
+}
 
 export function initSocket(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
     cors: {
       origin: (origin, callback) => {
         if (!origin) return callback(null, true);
-        const norm = origin.replace(/\/+$/, '');
-        if (
-          env.clientOrigins.includes(norm) ||
-          /^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(norm) ||
-          (env.NODE_ENV !== 'production' && /^http:\/\/localhost(:\d+)?$/.test(norm))
-        ) {
-          callback(null, true);
-        } else {
-          callback(new Error('Socket CORS blocked'));
-        }
+        if (isAllowedOrigin(origin)) callback(null, true);
+        else callback(new Error('Socket CORS blocked'));
       },
       credentials: true,
     },
   });
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     try {
       const token =
         (socket.handshake.auth?.token as string) ||
         (socket.handshake.headers.authorization as string)?.replace('Bearer ', '');
       if (!token) return next(new Error('Unauthorized'));
       const payload = verifyAccessToken(token);
+      if (payload.purpose === 'mfa' || !payload.mfaVerified) {
+        return next(new Error('MFA verification required'));
+      }
+      const user = await User.findById(payload.sub).select('status mfa.enabled').lean();
+      if (!user || user.status === 'disabled' || user.status === 'locked') {
+        return next(new Error('Unauthorized'));
+      }
+      if (user.mfa?.enabled && !payload.mfaVerified) {
+        return next(new Error('MFA verification required'));
+      }
       socket.data.userId = payload.sub;
       next();
     } catch {

@@ -32,11 +32,20 @@ const MFA_PENDING_PATHS = [
 
 export const authenticate = asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
   const header = req.headers.authorization;
-  const token = header?.startsWith('Bearer ')
-    ? header.slice(7)
-    : typeof req.query.token === 'string'
-      ? req.query.token
-      : undefined;
+  // Prefer Authorization header. Query-string tokens are only allowed for
+  // short-lived download/preview GET routes (avoids log/Referer leakage elsewhere).
+  let token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+  if (!token && typeof req.query.token === 'string' && req.method === 'GET') {
+    const path = req.path || '';
+    const original = req.originalUrl || '';
+    const allowQueryToken =
+      path.includes('/download') ||
+      path.includes('/preview') ||
+      path.includes('/slip') ||
+      original.includes('/files/') ||
+      original.includes('/export');
+    if (allowQueryToken) token = req.query.token;
+  }
   if (!token) throw new UnauthorizedError('Missing access token');
 
   let payload;
@@ -89,6 +98,17 @@ export function authorize(resource: Resource, action: Action) {
     if (!req.user) throw new UnauthorizedError();
     if (!can(req.user.role, resource, action)) {
       throw new ForbiddenError(`You do not have permission to ${action} ${resource}`);
+    }
+    next();
+  };
+}
+
+/** Allow if the role has any of the listed actions on the resource. */
+export function authorizeAny(resource: Resource, ...actions: Action[]) {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.user) throw new UnauthorizedError();
+    if (!actions.some((action) => can(req.user!.role, resource, action))) {
+      throw new ForbiddenError(`You do not have permission to access ${resource}`);
     }
     next();
   };

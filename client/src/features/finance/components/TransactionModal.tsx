@@ -241,7 +241,11 @@ export function TransactionModal({
 
     // Identify uncertain fields (confidence < 0.65 or missing)
     const uncertain: Record<string, boolean> = {};
-    if (!data.grandTotal || (conf.fields['grandTotal'] && conf.fields['grandTotal'] < 0.65)) {
+    const hasAmount =
+      (typeof data.grandTotal === 'number' && data.grandTotal > 0) ||
+      (typeof data.amountPaid === 'number' && data.amountPaid > 0) ||
+      (typeof data.subtotal === 'number' && data.subtotal > 0);
+    if (!hasAmount || (conf.fields['amount'] && conf.fields['amount'] < 0.65) || (conf.fields['grandTotal'] && conf.fields['grandTotal'] < 0.65)) {
       uncertain['amount'] = true;
     }
     if (!data.documentDate || (conf.fields['documentDate'] && conf.fields['documentDate'] < 0.65)) {
@@ -253,32 +257,52 @@ export function TransactionModal({
 
     setUncertainFields(uncertain);
 
-    // Auto-fill form
+    // Auto-fill form — prefer grandTotal, then amountPaid / subtotal
+    const resolvedAmount =
+      (typeof data.grandTotal === 'number' && data.grandTotal > 0 && data.grandTotal) ||
+      (typeof data.amountPaid === 'number' && data.amountPaid > 0 && data.amountPaid) ||
+      (typeof data.subtotal === 'number' && data.subtotal > 0 && data.subtotal) ||
+      null;
+
     const docNum = data.invoiceNumber || data.billNumber || data.receiptNumber || '';
     const partyName = (newType === 'expense' ? data.vendor?.name : data.customer?.name) || '';
     const suggestedTitle = docNum
       ? `${docNum}${partyName ? ` - ${partyName}` : ''}`
       : partyName
-      ? `${partyName} ${newType === 'expense' ? 'Bill' : 'Receipt'}`
-      : `${matchedCategory} Document`;
+      ? `${partyName} ${newType === 'expense' ? 'Bill' : 'Payment'}`
+      : data.description?.slice(0, 80) ||
+        (resolvedAmount ? `${matchedCategory} ₹${resolvedAmount}` : `${matchedCategory} Document`);
+
+    // Normalize payment method to form select values
+    const rawMethod = (data.paymentMethod || '').toLowerCase();
+    let paymentMethod = data.paymentMethod || '';
+    if (/upi|gpay|phonepe|paytm|bhim/.test(rawMethod)) paymentMethod = 'UPI';
+    else if (/card|visa|master|rupay|credit|debit/.test(rawMethod)) paymentMethod = 'Credit Card';
+    else if (/cash/.test(rawMethod)) paymentMethod = 'Cash';
+    else if (/neft|rtgs|imps|bank|transfer|net\s*banking/.test(rawMethod)) paymentMethod = 'Bank Transfer';
 
     setForm((prev) => ({
       ...prev,
       type: newType,
       category: matchedCategory,
-      amount: data.grandTotal ? String(data.grandTotal) : data.subtotal ? String(data.subtotal) : prev.amount,
-      taxAmount: data.totalTax ? String(data.totalTax) : '0',
+      amount: resolvedAmount != null ? String(resolvedAmount) : prev.amount,
+      taxAmount: data.totalTax != null && data.totalTax > 0 ? String(data.totalTax) : prev.taxAmount || '0',
       title: suggestedTitle || prev.title,
-      description: data.description || (data.vendor?.address ? `Address: ${data.vendor.address}` : prev.description),
+      description:
+        data.description ||
+        data.notes ||
+        (data.vendor?.address ? `Address: ${data.vendor.address}` : prev.description),
       date: data.documentDate || prev.date,
-      paymentMethod: data.paymentMethod || prev.paymentMethod,
+      paymentMethod: paymentMethod || prev.paymentMethod || 'UPI',
       vendor: matchedVendorId,
       client: matchedClientId,
       notes: [
         prev.notes,
         docNum ? `Scanned Doc #${docNum}` : '',
         data.vendor?.gstin ? `Vendor GSTIN: ${data.vendor.gstin}` : '',
-        data.paymentStatus ? `Status noted on bill: ${data.paymentStatus}` : '',
+        data.vendor?.name && !matchedVendorId ? `Payee: ${data.vendor.name}` : '',
+        data.paymentStatus ? `Payment status: ${data.paymentStatus}` : '',
+        result.extractionEngine ? `OCR: ${result.extractionEngine}` : '',
       ]
         .filter(Boolean)
         .join(' | '),

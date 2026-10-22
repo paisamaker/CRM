@@ -30,9 +30,11 @@ import { Modal } from '@/components/ui/Modal';
 import { BillModal, type BillItem } from './BillModal';
 import { RecordBillPaymentModal } from './RecordBillPaymentModal';
 import { syncFinanceQueries } from '../financeSync';
+import { useAuthStore } from '@/stores/auth';
 
 export function BillsReceiptsTab() {
   const qc = useQueryClient();
+  const isCeo = useAuthStore((s) => s.user?.role === 'ceo');
 
   const [typeFilter, setTypeFilter] = useState<'all' | 'payable' | 'receivable'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -121,139 +123,126 @@ export function BillsReceiptsTab() {
   return (
     <div className="space-y-6">
       {/* Top Action & Stat Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-transparent border border-rose-500/20 shadow-sm flex items-center justify-between">
-          <div>
-            <div className="text-xs font-medium text-rose-300">Outstanding Payables (Bills to Pay)</div>
-            <div className="text-2xl font-bold mt-1 text-[var(--fg-primary)]">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="flex items-center justify-between rounded-[var(--radius)] border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-white p-4 shadow-[var(--shadow-sm)]">
+          <div className="min-w-0">
+            <div className="text-xs font-bold uppercase tracking-wide text-rose-700">Outstanding payables</div>
+            <div className="mt-1 text-2xl font-bold text-[var(--fg)]">
               {formatCurrency(totalPayableOutstanding)}
             </div>
-            <div className="text-[11px] text-[var(--fg-muted)] mt-1">Pending vendor & service obligations</div>
+            <div className="mt-1 text-[11px] text-[var(--fg-secondary)]">Bills you still need to pay</div>
           </div>
           <Button
             size="sm"
             variant="outline"
-            className="border-rose-500/30 text-rose-300 hover:bg-rose-500/10 text-xs gap-1"
+            className="shrink-0 gap-1 border-rose-200 text-xs text-rose-700 hover:bg-rose-50"
             onClick={() => openNewBill('payable')}
           >
-            <Plus className="w-3.5 h-3.5" /> + Bill
+            <Plus className="h-3.5 w-3.5" /> Bill
           </Button>
         </div>
 
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/20 shadow-sm flex items-center justify-between">
-          <div>
-            <div className="text-xs font-medium text-emerald-300">Outstanding Receivables (Due from Clients)</div>
-            <div className="text-2xl font-bold mt-1 text-[var(--fg-primary)]">
+        <div className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--teal-border)] bg-gradient-to-br from-[var(--teal-soft)] via-white to-white p-4 shadow-[var(--shadow-sm)]">
+          <div className="min-w-0">
+            <div className="text-xs font-bold uppercase tracking-wide text-[var(--teal-text)]">Outstanding receivables</div>
+            <div className="mt-1 text-2xl font-bold text-[var(--fg)]">
               {formatCurrency(totalReceivableOutstanding)}
             </div>
-            <div className="text-[11px] text-[var(--fg-muted)] mt-1">Pending income collections</div>
+            <div className="mt-1 text-[11px] text-[var(--fg-secondary)]">Due from clients</div>
           </div>
           <Button
             size="sm"
             variant="outline"
-            className="border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 text-xs gap-1"
+            className="shrink-0 gap-1 border-[var(--teal-border)] text-xs text-[var(--teal-text)] hover:bg-[var(--teal-soft)]"
             onClick={() => openNewBill('receivable')}
           >
-            <Plus className="w-3.5 h-3.5" /> + Invoice
+            <Plus className="h-3.5 w-3.5" /> Invoice
           </Button>
         </div>
 
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent border border-blue-500/20 shadow-sm flex items-center justify-between">
-          <div>
-            <div className="text-xs font-medium text-blue-300">Total Bills Recorded</div>
-            <div className="text-2xl font-bold mt-1 text-[var(--fg-primary)]">
+        <div className="flex flex-col justify-between gap-3 rounded-[var(--radius)] border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-white p-4 shadow-[var(--shadow-sm)] sm:flex-row sm:items-center">
+          <div className="min-w-0">
+            <div className="text-xs font-bold uppercase tracking-wide text-sky-700">Total bills</div>
+            <div className="mt-1 text-2xl font-bold text-[var(--fg)]">
               {pagination?.total ?? bills.length}
             </div>
-            <div className="text-[11px] text-[var(--fg-muted)] mt-1">Payable & Receivable records</div>
+            <div className="mt-1 text-[11px] text-[var(--fg-secondary)]">Payable & receivable records</div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs gap-1 whitespace-nowrap"
-              onClick={handleSync}
-              disabled={isSyncing}
-              title="Instantly refresh bills ledger"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-teal-400' : ''}`} />
-              <span>{isSyncing ? 'Syncing…' : 'Sync'}</span>
+            <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={handleSync} disabled={isSyncing}>
+              <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin text-[var(--brand)]' : ''}`} />
+              {isSyncing ? 'Syncing…' : 'Sync'}
             </Button>
             <Button
               size="sm"
               variant="outline"
-              className="text-xs gap-1 border-teal-500/40 text-teal-300 hover:bg-teal-500/10 shadow-sm"
+              className="gap-1 border-[var(--teal-border)] text-xs text-[var(--teal-text)] hover:bg-[var(--teal-soft)]"
               onClick={() => openNewBill('payable', true)}
-              title="Scan Vendor Bill or Invoice with AI OCR"
             >
-              <Sparkles className="w-3.5 h-3.5 text-teal-400" /> Scan Bill
+              <Sparkles className="h-3.5 w-3.5" /> Scan
             </Button>
-            <Button
-              size="sm"
-              variant="teal"
-              className="text-xs gap-1 shadow-md shadow-teal-500/10"
-              onClick={() => openNewBill('payable', false)}
-            >
-              <Plus className="w-4 h-4" /> Create Bill
+            <Button size="sm" variant="teal" className="gap-1 text-xs" onClick={() => openNewBill('payable', false)}>
+              <Plus className="h-4 w-4" /> Create
             </Button>
           </div>
         </div>
       </div>
 
       {/* Filter / Controls Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-2xl">
+      <div className="flex flex-col items-stretch justify-between gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-sm)] md:flex-row md:items-center">
         <div className="flex flex-wrap items-center gap-2">
-          {/* Type Filter Pills */}
-          <div className="flex items-center p-1 bg-[var(--surface-sunken)] rounded-xl border border-[var(--border-subtle)]">
+          <div className="flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] p-1">
             <button
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+              type="button"
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                 typeFilter === 'all'
-                  ? 'bg-[var(--accent)] text-white shadow-sm'
-                  : 'text-[var(--fg-muted)] hover:text-[var(--fg-primary)]'
+                  ? 'bg-[var(--brand)] text-white shadow-sm'
+                  : 'text-[var(--fg-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--fg)]'
               }`}
               onClick={() => setTypeFilter('all')}
             >
-              All Types
+              All
             </button>
             <button
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+              type="button"
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                 typeFilter === 'payable'
-                  ? 'bg-rose-500 text-white shadow-sm'
-                  : 'text-[var(--fg-muted)] hover:text-[var(--fg-primary)]'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'text-[var(--fg-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--fg)]'
               }`}
               onClick={() => setTypeFilter('payable')}
             >
-              Payable (Bills)
+              Payables
             </button>
             <button
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+              type="button"
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                 typeFilter === 'receivable'
-                  ? 'bg-emerald-500 text-white shadow-sm'
-                  : 'text-[var(--fg-muted)] hover:text-[var(--fg-primary)]'
+                  ? 'bg-[var(--teal)] text-white shadow-sm'
+                  : 'text-[var(--fg-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--fg)]'
               }`}
               onClick={() => setTypeFilter('receivable')}
             >
-              Receivable (Invoices)
+              Receivables
             </button>
           </div>
 
-          {/* Status Dropdown */}
           <div className="w-36">
             <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="all">All Statuses</option>
+              <option value="all">All statuses</option>
               <option value="unpaid">Unpaid</option>
-              <option value="partially_paid">Partially Paid</option>
+              <option value="partially_paid">Partially paid</option>
               <option value="paid">Paid</option>
               <option value="cancelled">Cancelled</option>
             </Select>
           </div>
         </div>
 
-        {/* Search Input */}
         <div className="relative w-full md:w-72">
-          <Search className="w-4 h-4 text-[var(--fg-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--fg-secondary)]" />
           <Input
             className="pl-9 text-xs"
-            placeholder="Search by title, bill #, vendor or client…"
+            placeholder="Search title, bill #, vendor or client…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -408,27 +397,34 @@ export function BillsReceiptsTab() {
                             <Eye className="w-3.5 h-3.5" />
                           </button>
 
-                          <button
-                            type="button"
-                            className="p-1 rounded text-[var(--fg-muted)] hover:text-[var(--fg-primary)] hover:bg-[var(--surface-sunken)] transition-colors"
-                            onClick={() => openEditBill(bill)}
-                            title="Edit Bill"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-
-                          <button
-                            type="button"
-                            className="p-1 rounded text-[var(--fg-muted)] hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                            onClick={() => {
-                              if (confirm(`Are you sure you want to cancel/delete bill ${bill.billNumber}?`)) {
-                                deleteMutation.mutate(bill._id!);
-                              }
-                            }}
-                            title="Cancel / Delete"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {isCeo ? (
+                            <>
+                              <button
+                                type="button"
+                                className="rounded p-1 text-[var(--fg-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--fg)]"
+                                onClick={() => openEditBill(bill)}
+                                title="Update bill (CEO)"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded p-1 text-[var(--fg-secondary)] transition-colors hover:bg-rose-50 hover:text-rose-700"
+                                onClick={() => {
+                                  if (
+                                    confirm(
+                                      `Cancel/delete bill ${bill.billNumber}? This cannot be undone for unpaid bills.`
+                                    )
+                                  ) {
+                                    deleteMutation.mutate(bill._id!);
+                                  }
+                                }}
+                                title="Delete bill (CEO)"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

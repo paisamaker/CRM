@@ -13,6 +13,8 @@ import { writeAudit } from '../../utils/audit.js';
 import { notifyCeos, notifyUsers } from '../../utils/notify.js';
 import { User } from '../../models/User.js';
 import { getSettings } from '../../models/Settings.js';
+import { adjustBankBalance, directionForTxType } from '../../utils/bankLedger.js';
+import { memoryCache } from '../../utils/cache.js';
 
 const router = Router();
 router.use(authenticate);
@@ -20,9 +22,26 @@ router.use(authenticate);
 async function applyApprovalSideEffects(approval: InstanceType<typeof Approval>, approved: boolean) {
   const status = approved ? 'approved' : 'rejected';
   if (approval.refModel === 'Transaction') {
-    await Transaction.findByIdAndUpdate(approval.refId, {
-      status: approved ? 'approved' : 'rejected',
-    });
+    const tx = await Transaction.findById(approval.refId);
+    if (tx) {
+      const previousStatus = tx.status;
+      tx.status = approved ? 'approved' : 'rejected';
+      await tx.save();
+
+      // Mirror create-approved path: only move bank funds when leaving pending → approved
+      if (
+        approved &&
+        previousStatus === 'pending' &&
+        (tx.type === 'revenue' || tx.type === 'expense')
+      ) {
+        await adjustBankBalance({
+          bankAccountId: tx.bankAccount ? String(tx.bankAccount) : undefined,
+          amount: tx.amount,
+          direction: directionForTxType(tx.type),
+        });
+        memoryCache.delPrefix('finance');
+      }
+    }
   } else if (approval.refModel === 'Payroll') {
     await Payroll.findByIdAndUpdate(approval.refId, {
       status: approved ? 'approved' : 'rejected',

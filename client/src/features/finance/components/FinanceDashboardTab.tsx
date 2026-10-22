@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   TrendingUp,
@@ -7,38 +7,15 @@ import {
   Landmark,
   Users,
   AlertTriangle,
-  Receipt,
-  ArrowUpRight,
-  ArrowDownRight,
-  Calendar,
-  CreditCard,
-  Building2,
-  FileText,
   DollarSign,
-  Plus,
-  RefreshCw,
-  Clock,
-  ShieldCheck,
 } from 'lucide-react';
-import {
-  AreaChart,
-  Area,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-  PieChart,
-  Pie,
-  Cell,
-} from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { api } from '@/lib/api';
-import { formatCurrency, formatDate } from '@/lib/utils';
-import { Button } from '@/components/ui/Button';
+import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { Input } from '@/components/ui/Input';
-import { Badge, statusTone } from '@/components/ui/Badge';
-import { TableShell } from '@/components/ui/Card';
+import { TableShell, Skeleton } from '@/components/ui/Card';
 
-const PIE_COLORS = ['#f43f5e', '#3b82f6', '#f59e0b', '#0d9488', '#8b5cf6', '#ec4899', '#6366f1'];
+const PIE_COLORS = ['#0d9488', '#dc2626', '#d97706', '#0284c7', '#7c3aed', '#db2777', '#4f46e5'];
 
 interface Props {
   onOpenIncomeModal: () => void;
@@ -48,10 +25,121 @@ interface Props {
   onNavigateTab: (tabId: string) => void;
 }
 
+type Tone = 'teal' | 'rose' | 'amber' | 'blue' | 'purple' | 'orange';
+
+const toneStyles: Record<Tone, { wrap: string; icon: string; label: string; chip: string; link: string; border: string }> = {
+  teal: {
+    wrap: 'from-[var(--teal-soft)] via-white to-white border-[var(--teal-border)]',
+    icon: 'bg-[var(--teal-soft)] text-[var(--teal-text)]',
+    label: 'text-[var(--teal-text)]',
+    chip: 'bg-[var(--teal-soft)] text-[var(--teal-text)]',
+    link: 'text-[var(--teal-text)]',
+    border: 'border-[var(--teal-border)]',
+  },
+  rose: {
+    wrap: 'from-rose-50 via-white to-white border-rose-200',
+    icon: 'bg-rose-50 text-rose-700',
+    label: 'text-rose-700',
+    chip: 'bg-rose-50 text-rose-700',
+    link: 'text-rose-700',
+    border: 'border-rose-100',
+  },
+  amber: {
+    wrap: 'from-[var(--orange-soft)] via-white to-white border-[var(--orange-border)]',
+    icon: 'bg-[var(--orange-soft)] text-[var(--orange-text)]',
+    label: 'text-[var(--orange-text)]',
+    chip: 'bg-[var(--orange-soft)] text-[var(--orange-text)]',
+    link: 'text-[var(--orange-text)]',
+    border: 'border-[var(--orange-border)]',
+  },
+  blue: {
+    wrap: 'from-[var(--info-bg)] via-white to-white border-sky-200',
+    icon: 'bg-[var(--info-bg)] text-sky-700',
+    label: 'text-sky-700',
+    chip: 'bg-[var(--info-bg)] text-sky-700',
+    link: 'text-sky-700',
+    border: 'border-sky-100',
+  },
+  purple: {
+    wrap: 'from-[var(--purple-soft)] via-white to-white border-[var(--purple-border)]',
+    icon: 'bg-[var(--purple-soft)] text-[var(--purple-text)]',
+    label: 'text-[var(--purple-text)]',
+    chip: 'bg-[var(--purple-soft)] text-[var(--purple-text)]',
+    link: 'text-[var(--purple-text)]',
+    border: 'border-[var(--purple-border)]',
+  },
+  orange: {
+    wrap: 'from-[var(--orange-soft)] via-white to-white border-[var(--orange-border)]',
+    icon: 'bg-[var(--orange-soft)] text-[var(--orange-text)]',
+    label: 'text-[var(--orange-text)]',
+    chip: 'bg-[var(--orange-soft)] text-[var(--orange-text)]',
+    link: 'text-[var(--orange-text)]',
+    border: 'border-[var(--orange-border)]',
+  },
+};
+
+function KpiCard({
+  tone,
+  icon,
+  title,
+  subtitle,
+  chip,
+  value,
+  footerLeft,
+  footerRight,
+  onClick,
+}: {
+  tone: Tone;
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+  chip?: string;
+  value: string;
+  footerLeft: ReactNode;
+  footerRight?: ReactNode;
+  onClick?: () => void;
+}) {
+  const t = toneStyles[tone];
+  const Comp = onClick ? 'button' : 'div';
+  return (
+    <Comp
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={cn(
+        'flex h-full flex-col rounded-[var(--radius)] border bg-gradient-to-br p-4 text-left shadow-[var(--shadow-sm)] transition',
+        t.wrap,
+        onClick && 'cursor-pointer hover:shadow-[var(--shadow)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]'
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-sm)]', t.icon)}>
+            {icon}
+          </div>
+          <div className="min-w-0">
+            <div className={cn('text-[11px] font-bold uppercase tracking-wide', t.label)}>{title}</div>
+            <div className="mt-0.5 text-xs text-[var(--fg-secondary)]">{subtitle}</div>
+          </div>
+        </div>
+        {chip ? (
+          <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold', t.chip)}>{chip}</span>
+        ) : null}
+      </div>
+
+      <div className="mt-4 text-2xl font-bold tracking-tight text-[var(--fg)] sm:text-[1.75rem]">{value}</div>
+
+      <div className={cn('mt-auto flex items-center justify-between gap-2 border-t pt-3 text-xs', t.border)}>
+        <span className="min-w-0 truncate text-[var(--fg-secondary)]">{footerLeft}</span>
+        {footerRight ? <span className={cn('shrink-0 font-semibold', t.link)}>{footerRight}</span> : null}
+      </div>
+    </Comp>
+  );
+}
+
 export function FinanceDashboardTab({
-  onOpenIncomeModal,
-  onOpenExpenseModal,
-  onOpenBillModal,
+  onOpenIncomeModal: _onOpenIncomeModal,
+  onOpenExpenseModal: _onOpenExpenseModal,
+  onOpenBillModal: _onOpenBillModal,
   onOpenSalaryModal,
   onNavigateTab,
 }: Props) {
@@ -59,16 +147,18 @@ export function FinanceDashboardTab({
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
 
-  const { data: dashData, isLoading, refetch } = useQuery({
+  const { data: dashData, isLoading } = useQuery({
     queryKey: ['finance-dashboard-summary', period, customFrom, customTo],
     queryFn: async () => {
-      const params: any = { period };
+      const params: Record<string, string> = { period };
       if (period === 'custom') {
         if (customFrom) params.from = customFrom;
         if (customTo) params.to = customTo;
       }
       return (await api.get('/finance/dashboard-summary', { params })).data.data;
     },
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
   });
 
   const cards = dashData?.cards || {
@@ -89,31 +179,62 @@ export function FinanceDashboardTab({
     totalPendingLiabilities: 0,
   };
 
-  const bankAccounts: any[] = dashData?.bankAccounts || [];
-  const categoryExpenses: any[] = dashData?.categoryBreakdown?.expense || [];
-  const recentTransactions: any[] = dashData?.recentTransactions || [];
+  const bankAccounts: Array<{
+    _id: string;
+    bankName: string;
+    accountNumber?: string;
+    currentBalance?: number;
+    balance?: number;
+    openingBalance?: number;
+    accountType?: string;
+  }> = dashData?.bankAccounts || [];
+  const categoryExpenses: Array<{ category: string; total: number }> = dashData?.categoryBreakdown?.expense || [];
+  const recentTransactions: Array<{
+    _id: string;
+    type: string;
+    date: string;
+    title?: string;
+    category?: string;
+    amount: number;
+    client?: { name?: string };
+    vendor?: { name?: string };
+    employee?: { name?: string };
+  }> = dashData?.recentTransactions || [];
+
+  const periodLabel = period.replace(/_/g, ' ');
+  const isProfit = cards.netProfit >= 0;
+
+  if (isLoading && !dashData) {
+    return (
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-40 rounded-[var(--radius)]" />
+        ))}
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Top Filter and Action Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-2xl">
-        {/* Quick Period Filters */}
-        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-[var(--surface-sunken)] rounded-xl border border-[var(--border-subtle)]">
+    <div className="space-y-5">
+      {/* Period only — actions live in page header to avoid duplication */}
+      <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] p-1">
           {[
             { id: 'today', label: 'Today' },
-            { id: 'this_week', label: 'This Week' },
-            { id: 'this_month', label: 'This Month' },
-            { id: 'this_year', label: 'This Year' },
+            { id: 'this_week', label: 'This week' },
+            { id: 'this_month', label: 'This month' },
+            { id: 'this_year', label: 'This year' },
             { id: 'custom', label: 'Custom' },
           ].map((p) => (
             <button
               key={p.id}
               type="button"
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all capitalize ${
+              className={cn(
+                'rounded-[7px] px-3 py-1.5 text-xs font-semibold capitalize transition',
                 period === p.id
-                  ? 'bg-[var(--accent)] text-white shadow-sm'
-                  : 'text-[var(--fg-muted)] hover:text-[var(--fg-primary)]'
-              }`}
+                  ? 'bg-[var(--brand)] text-white shadow-sm'
+                  : 'text-[var(--fg-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--fg)]'
+              )}
               onClick={() => setPeriod(p.id)}
             >
               {p.label}
@@ -121,335 +242,137 @@ export function FinanceDashboardTab({
           ))}
         </div>
 
-        {/* Custom Date Pickers */}
-        {period === 'custom' && (
-          <div className="flex items-center gap-2">
-            <Input
-              type="date"
-              className="w-36 text-xs"
-              value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
-            />
-            <span className="text-xs text-[var(--fg-muted)]">to</span>
-            <Input
-              type="date"
-              className="w-36 text-xs"
-              value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
-            />
+        {period === 'custom' ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Input type="date" className="w-36 text-xs" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+            <span className="text-xs text-[var(--fg-secondary)]">to</span>
+            <Input type="date" className="w-36 text-xs" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
           </div>
+        ) : (
+          <p className="text-xs font-medium text-[var(--fg-secondary)]">
+            Showing <span className="text-[var(--fg)] capitalize">{periodLabel}</span>
+          </p>
         )}
-
-        {/* Quick Action Buttons */}
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs gap-1 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
-            onClick={onOpenIncomeModal}
-          >
-            <ArrowUpRight className="w-3.5 h-3.5" /> + Income
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs gap-1 border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
-            onClick={onOpenExpenseModal}
-          >
-            <ArrowDownRight className="w-3.5 h-3.5" /> + Expense
-          </Button>
-          <Button
-            size="sm"
-            variant="teal"
-            className="text-xs gap-1 shadow-md shadow-teal-500/10"
-            onClick={onOpenBillModal}
-          >
-            <Plus className="w-3.5 h-3.5" /> + Bill
-          </Button>
-        </div>
       </div>
 
-      {/* ==================================================
-          6 CORE FINANCIAL DASHBOARD CARDS
-          ================================================== */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Card A: Total Income */}
-        <div
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <KpiCard
+          tone="teal"
+          icon={<TrendingUp className="h-5 w-5" />}
+          title="Total income"
+          subtitle="Clients, projects & revenue"
+          chip={`${cards.incomeCount} entries`}
+          value={formatCurrency(cards.totalIncome)}
+          footerLeft={`Period: ${periodLabel}`}
+          footerRight="View ledger →"
           onClick={() => onNavigateTab('income')}
-          className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/20 shadow-sm hover:border-emerald-500/40 transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400">
-                <TrendingUp className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Total Income</div>
-                <div className="text-[11px] text-[var(--fg-muted)]">Clients, projects & revenue</div>
-              </div>
-            </div>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-medium">
-              {cards.incomeCount} entries
-            </span>
-          </div>
-
-          <div className="mt-4">
-            <div className="text-3xl font-extrabold text-[var(--fg-primary)] tracking-tight">
-              {formatCurrency(cards.totalIncome)}
-            </div>
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-emerald-500/15 text-xs">
-              <span className="text-[var(--fg-muted)]">Period: {period.replace('_', ' ')}</span>
-              <span className="text-emerald-400 group-hover:underline flex items-center gap-0.5">
-                View Ledger &rarr;
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card B: Total Expenses */}
-        <div
+        />
+        <KpiCard
+          tone="rose"
+          icon={<TrendingDown className="h-5 w-5" />}
+          title="Total expenses"
+          subtitle="Operations, bills & costs"
+          chip={`${cards.expenseCount} entries`}
+          value={formatCurrency(cards.totalExpenses)}
+          footerLeft="Paid & approved costs"
+          footerRight="View breakdown →"
           onClick={() => onNavigateTab('expenses')}
-          className="p-5 rounded-2xl bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-transparent border border-rose-500/20 shadow-sm hover:border-rose-500/40 transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-rose-500/15 text-rose-400">
-                <TrendingDown className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-rose-400 uppercase tracking-wider">Total Expenses</div>
-                <div className="text-[11px] text-[var(--fg-muted)]">Operations, bills & salaries</div>
-              </div>
-            </div>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 font-medium">
-              {cards.expenseCount} entries
-            </span>
-          </div>
-
-          <div className="mt-4">
-            <div className="text-3xl font-extrabold text-[var(--fg-primary)] tracking-tight">
-              {formatCurrency(cards.totalExpenses)}
-            </div>
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-rose-500/15 text-xs">
-              <span className="text-[var(--fg-muted)]">Paid & approved costs</span>
-              <span className="text-rose-400 group-hover:underline flex items-center gap-0.5">
-                View Breakdown &rarr;
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card C: Net Profit / Loss */}
-        <div
-          className={`p-5 rounded-2xl bg-gradient-to-br ${
-            cards.netProfit >= 0
-              ? 'from-teal-500/10 via-teal-500/5 to-transparent border-teal-500/20'
-              : 'from-amber-500/10 via-amber-500/5 to-transparent border-amber-500/20'
-          } border shadow-sm transition-all`}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div
-                className={`p-2 rounded-xl ${
-                  cards.netProfit >= 0 ? 'bg-teal-500/15 text-teal-400' : 'bg-amber-500/15 text-amber-400'
-                }`}
-              >
-                <DollarSign className="w-5 h-5" />
-              </div>
-              <div>
-                <div
-                  className={`text-xs font-semibold uppercase tracking-wider ${
-                    cards.netProfit >= 0 ? 'text-teal-400' : 'text-amber-400'
-                  }`}
-                >
-                  Net {cards.netProfit >= 0 ? 'Profit' : 'Loss'}
-                </div>
-                <div className="text-[11px] text-[var(--fg-muted)]">Total Income - Total Expenses</div>
-              </div>
-            </div>
-            <span
-              className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${
-                cards.netProfit >= 0
-                  ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
-                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-              }`}
-            >
-              {cards.totalIncome > 0
-                ? `${Math.round(((cards.totalIncome - cards.totalExpenses) / cards.totalIncome) * 100)}% margin`
-                : '0% margin'}
-            </span>
-          </div>
-
-          <div className="mt-4">
-            <div className="text-3xl font-extrabold text-[var(--fg-primary)] tracking-tight">
-              {formatCurrency(cards.netProfit)}
-            </div>
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border-subtle)] text-xs">
-              <span className="text-[var(--fg-muted)]">
-                Formula: ₹{cards.totalIncome.toLocaleString()} - ₹{cards.totalExpenses.toLocaleString()}
-              </span>
-              <span className={cards.netProfit >= 0 ? 'text-teal-400 font-medium' : 'text-amber-400 font-medium'}>
-                {cards.netProfit >= 0 ? 'Profitable' : 'Deficit'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card D: Available Balance */}
-        <div className="p-5 rounded-2xl bg-gradient-to-br from-blue-500/15 via-blue-500/5 to-transparent border border-blue-500/30 shadow-md transition-all">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400">
-                <Wallet className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-blue-300 uppercase tracking-wider">Available Balance</div>
-                <div className="text-[11px] text-[var(--fg-muted)]">Actual cash & bank reserves</div>
-              </div>
-            </div>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
-              Liquid Cash
-            </span>
-          </div>
-
-          <div className="mt-4">
-            <div className="text-3xl font-extrabold text-blue-300 tracking-tight">
-              {formatCurrency(cards.availableBalance)}
-            </div>
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-blue-500/20 text-xs">
-              <span className="text-[var(--fg-muted)]">
-                Opening Balance: {formatCurrency(cards.openingBalance)}
-              </span>
-              <span className="text-[11px] text-blue-400 font-medium">Reconciled</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card E: Total Salary Paid */}
-        <div
+        />
+        <KpiCard
+          tone={isProfit ? 'teal' : 'amber'}
+          icon={<DollarSign className="h-5 w-5" />}
+          title={isProfit ? 'Net profit' : 'Net loss'}
+          subtitle="Income − expenses"
+          chip={
+            cards.totalIncome > 0
+              ? `${Math.round(((cards.totalIncome - cards.totalExpenses) / cards.totalIncome) * 100)}% margin`
+              : '0% margin'
+          }
+          value={formatCurrency(cards.netProfit)}
+          footerLeft={`${formatCurrency(cards.totalIncome)} − ${formatCurrency(cards.totalExpenses)}`}
+          footerRight={isProfit ? 'Profitable' : 'Deficit'}
+        />
+        <KpiCard
+          tone="blue"
+          icon={<Wallet className="h-5 w-5" />}
+          title="Available balance"
+          subtitle="Cash & bank reserves"
+          chip="Liquid"
+          value={formatCurrency(cards.availableBalance)}
+          footerLeft={`Opening ${formatCurrency(cards.openingBalance)}`}
+          footerRight="Reconciled"
+        />
+        <KpiCard
+          tone="purple"
+          icon={<Users className="h-5 w-5" />}
+          title="Salary paid"
+          subtitle="Disbursed to employees"
+          chip={`${cards.salaryPaidCount} paid`}
+          value={formatCurrency(cards.salaryPaid)}
+          footerLeft={`Pending ${formatCurrency(cards.salaryPending)} (${cards.salaryPendingCount})`}
+          footerRight="Payroll →"
           onClick={() => onNavigateTab('salary')}
-          className="p-5 rounded-2xl bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-transparent border border-indigo-500/20 shadow-sm hover:border-indigo-500/40 transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-indigo-500/15 text-indigo-400">
-                <Users className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Total Salary Paid</div>
-                <div className="text-[11px] text-[var(--fg-muted)]">Actually disbursed to employees</div>
-              </div>
-            </div>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 font-medium">
-              {cards.salaryPaidCount} paid
-            </span>
-          </div>
-
-          <div className="mt-4">
-            <div className="text-3xl font-extrabold text-[var(--fg-primary)] tracking-tight">
-              {formatCurrency(cards.salaryPaid)}
-            </div>
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-indigo-500/15 text-xs">
-              <span className="text-amber-400 font-medium">
-                Pending: {formatCurrency(cards.salaryPending)} ({cards.salaryPendingCount})
-              </span>
-              <span className="text-indigo-400 group-hover:underline flex items-center gap-0.5">
-                Payroll &rarr;
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card F: Pending Payments & Outstanding Liabilities */}
-        <div
+        />
+        <KpiCard
+          tone="orange"
+          icon={<AlertTriangle className="h-5 w-5" />}
+          title="Pending payments"
+          subtitle="Outstanding liabilities"
+          chip="Liabilities"
+          value={formatCurrency(cards.totalPendingLiabilities)}
+          footerLeft={`Bills ${formatCurrency(cards.pendingBillsPayable)} · Salaries ${formatCurrency(cards.salaryPending)}`}
+          footerRight="Bills →"
           onClick={() => onNavigateTab('bills')}
-          className="p-5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 shadow-sm hover:border-amber-500/40 transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-amber-500/15 text-amber-400">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Pending Payments</div>
-                <div className="text-[11px] text-[var(--fg-muted)]">Outstanding business liabilities</div>
-              </div>
-            </div>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-medium">
-              Liabilities
-            </span>
-          </div>
-
-          <div className="mt-4">
-            <div className="text-3xl font-extrabold text-amber-400 tracking-tight">
-              {formatCurrency(cards.totalPendingLiabilities)}
-            </div>
-            <div className="grid grid-cols-2 gap-1 mt-2 pt-2 border-t border-amber-500/15 text-xs">
-              <span className="text-[var(--fg-muted)] truncate">
-                Bills: {formatCurrency(cards.pendingBillsPayable)}
-              </span>
-              <span className="text-[var(--fg-muted)] truncate text-right">
-                Salaries: {formatCurrency(cards.salaryPending)}
-              </span>
-            </div>
-          </div>
-        </div>
+        />
       </div>
 
-      {/* ==================================================
-          TREASURY / BANK ACCOUNTS BREAKDOWN
-          ================================================== */}
-      {bankAccounts.length > 0 && (
-        <div className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border-subtle)] space-y-4">
-          <div className="flex items-center justify-between">
+      {bankAccounts.length > 0 ? (
+        <section className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-sm)]">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Landmark className="w-5 h-5 text-teal-400" />
-              <h3 className="font-semibold text-sm text-[var(--fg-primary)]">
-                Treasury & Active Bank Accounts
-              </h3>
+              <Landmark className="h-5 w-5 text-[var(--brand)]" />
+              <h3 className="text-sm font-semibold text-[var(--fg)]">Treasury & bank accounts</h3>
             </div>
-            <span className="text-xs text-[var(--fg-muted)]">
-              Total Recorded Reserves: {formatCurrency(bankAccounts.reduce((s, b) => s + (b.currentBalance ?? b.balance ?? 0), 0))}
+            <span className="text-xs font-medium text-[var(--fg-secondary)]">
+              Total reserves{' '}
+              <span className="text-[var(--fg)]">
+                {formatCurrency(bankAccounts.reduce((s, b) => s + (b.currentBalance ?? b.balance ?? 0), 0))}
+              </span>
             </span>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {bankAccounts.map((b) => (
               <div
                 key={b._id}
-                className="p-3.5 rounded-xl bg-[var(--surface-sunken)] border border-[var(--border-subtle)] space-y-2"
+                className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] p-3.5"
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-xs text-[var(--fg-primary)]">{b.bankName}</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--surface)] border border-[var(--border-subtle)]">
-                    ••• {String(b.accountNumber).slice(-4)}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-xs font-semibold text-[var(--fg)]">{b.bankName}</span>
+                  <span className="shrink-0 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-0.5 font-mono text-[10px] text-[var(--fg-secondary)]">
+                    ••• {String(b.accountNumber || '').slice(-4) || '----'}
                   </span>
                 </div>
-                <div className="text-lg font-bold text-teal-400">
+                <div className="mt-2 text-lg font-bold text-[var(--brand-deep)]">
                   {formatCurrency(b.currentBalance ?? b.balance ?? 0)}
                 </div>
-                <div className="text-[10px] text-[var(--fg-muted)] flex items-center justify-between">
-                  <span>Opening: {formatCurrency(b.openingBalance ?? 0)}</span>
+                <div className="mt-1 flex justify-between text-[11px] text-[var(--fg-secondary)]">
+                  <span>Opening {formatCurrency(b.openingBalance ?? 0)}</span>
                   <span>{b.accountType || 'Current'}</span>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        </section>
+      ) : null}
 
-      {/* ==================================================
-          EXPENSES BREAKDOWN & RECENT ACTIVITY
-          ================================================== */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Expenses by Category */}
-        <div className="lg:col-span-1 p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border-subtle)] space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-sm text-[var(--fg-primary)]">Expenses by Category</h3>
-            <span className="text-xs text-[var(--fg-muted)]">{categoryExpenses.length} categories</span>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <section className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-sm)] lg:col-span-1">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-[var(--fg)]">Expenses by category</h3>
+            <span className="text-xs text-[var(--fg-secondary)]">{categoryExpenses.length} categories</span>
           </div>
 
-          <div className="h-48 w-full flex items-center justify-center">
+          <div className="flex h-44 items-center justify-center">
             {categoryExpenses.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -459,8 +382,8 @@ export function FinanceDashboardTab({
                     nameKey="category"
                     cx="50%"
                     cy="50%"
-                    innerRadius={45}
-                    outerRadius={65}
+                    innerRadius={48}
+                    outerRadius={68}
                     paddingAngle={3}
                   >
                     {categoryExpenses.map((_, index) => (
@@ -469,58 +392,69 @@ export function FinanceDashboardTab({
                   </Pie>
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: 'var(--surface-sunken)',
-                      borderColor: 'var(--border-subtle)',
-                      borderRadius: '0.75rem',
+                      backgroundColor: 'var(--bg-elevated)',
+                      borderColor: 'var(--border)',
+                      borderRadius: '10px',
                       fontSize: '11px',
+                      color: 'var(--fg)',
                     }}
-                    formatter={(val: any) => [formatCurrency(Number(val)), '']}
+                    formatter={(val) => [formatCurrency(Number(val ?? 0)), 'Amount']}
                   />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="text-xs text-[var(--fg-muted)]">No expenses in this period</div>
+              <p className="text-sm text-[var(--fg-secondary)]">No expenses in this period</p>
             )}
           </div>
 
-          <div className="space-y-1.5 text-xs max-h-48 overflow-y-auto pr-1">
+          <div className="mt-2 max-h-48 space-y-1 overflow-y-auto pr-1">
             {categoryExpenses.map((c, i) => (
               <div
                 key={c.category}
-                className="flex items-center justify-between p-1.5 rounded-lg hover:bg-[var(--surface-sunken)]"
+                className="flex items-center justify-between rounded-[8px] px-2 py-1.5 text-xs hover:bg-[var(--bg)]"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   <span
-                    className="w-2 h-2 rounded-full"
+                    className="h-2 w-2 shrink-0 rounded-full"
                     style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
                   />
-                  <span className="text-[var(--fg-secondary)] truncate max-w-[130px]">{c.category}</span>
+                  <span className="truncate text-[var(--fg-secondary)]">{c.category}</span>
                 </div>
-                <span className="font-semibold text-[var(--fg-primary)]">{formatCurrency(c.total)}</span>
+                <span className="shrink-0 font-semibold text-[var(--fg)]">{formatCurrency(c.total)}</span>
               </div>
             ))}
           </div>
-        </div>
+        </section>
 
-        {/* Recent Transactions Feed */}
-        <div className="lg:col-span-2 p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border-subtle)] space-y-4">
-          <div className="flex items-center justify-between">
+        <section className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-sm)] lg:col-span-2">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h3 className="font-semibold text-sm text-[var(--fg-primary)]">Recent Financial Transactions</h3>
-              <p className="text-xs text-[var(--fg-muted)]">Latest verified income and expense postings</p>
+              <h3 className="text-sm font-semibold text-[var(--fg)]">Recent transactions</h3>
+              <p className="text-xs text-[var(--fg-secondary)]">Latest verified income and expense postings</p>
             </div>
-            <button
-              type="button"
-              className="text-xs text-teal-400 hover:underline"
-              onClick={() => onNavigateTab('income')}
-            >
-              View All Transactions &rarr;
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="text-xs font-semibold text-[var(--brand-deep)] hover:underline"
+                onClick={onOpenSalaryModal}
+              >
+                Pay salary
+              </button>
+              <button
+                type="button"
+                className="text-xs font-semibold text-[var(--brand-deep)] hover:underline"
+                onClick={() => onNavigateTab('income')}
+              >
+                View all →
+              </button>
+            </div>
           </div>
 
           <TableShell>
             {recentTransactions.length === 0 ? (
-              <div className="p-8 text-center text-xs text-[var(--fg-muted)]">No transactions recorded yet</div>
+              <div className="px-4 py-10 text-center text-sm text-[var(--fg-secondary)]">
+                No transactions recorded for this period
+              </div>
             ) : (
               <table className="data-table w-full text-left">
                 <thead>
@@ -536,29 +470,30 @@ export function FinanceDashboardTab({
                   {recentTransactions.map((tx) => {
                     const isIncome = tx.type === 'revenue';
                     const party = tx.client?.name || tx.vendor?.name || tx.employee?.name || '—';
-
                     return (
-                      <tr key={tx._id} className="hover:bg-[var(--surface-sunken)]/50 transition-colors">
-                        <td className="text-xs">{formatDate(tx.date)}</td>
+                      <tr key={tx._id} className="transition-colors hover:bg-[var(--bg)]">
+                        <td className="text-xs text-[var(--fg-secondary)]">{formatDate(tx.date)}</td>
                         <td>
                           <span
-                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                              isIncome ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
-                            }`}
+                            className={cn(
+                              'inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                              isIncome
+                                ? 'bg-[var(--teal-soft)] text-[var(--teal-text)]'
+                                : 'bg-rose-50 text-rose-700'
+                            )}
                           >
                             {isIncome ? 'Income' : 'Expense'}
                           </span>
                         </td>
                         <td>
-                          <div className="font-medium text-xs text-[var(--fg-primary)]">
-                            {tx.title || tx.category}
-                          </div>
-                          <div className="text-[10px] text-[var(--fg-muted)]">{tx.category}</div>
+                          <div className="text-xs font-semibold text-[var(--fg)]">{tx.title || tx.category}</div>
+                          <div className="text-[10px] text-[var(--fg-secondary)]">{tx.category}</div>
                         </td>
-                        <td className="text-xs text-[var(--fg-secondary)] truncate max-w-[120px]">{party}</td>
-                        <td className="!text-right font-bold text-xs">
-                          <span className={isIncome ? 'text-emerald-400' : 'text-rose-400'}>
-                            {isIncome ? '+' : '-'}{formatCurrency(tx.amount)}
+                        <td className="max-w-[120px] truncate text-xs text-[var(--fg-secondary)]">{party}</td>
+                        <td className="!text-right text-xs font-bold">
+                          <span className={isIncome ? 'text-[var(--teal-text)]' : 'text-rose-700'}>
+                            {isIncome ? '+' : '-'}
+                            {formatCurrency(tx.amount)}
                           </span>
                         </td>
                       </tr>
@@ -568,7 +503,7 @@ export function FinanceDashboardTab({
               </table>
             )}
           </TableShell>
-        </div>
+        </section>
       </div>
     </div>
   );

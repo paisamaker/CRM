@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, Target, CheckCircle2, ArrowRight, DollarSign } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
-import { Card } from '@/components/ui/Card';
+import { Card, Skeleton } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input, Label, Select } from '@/components/ui/Input';
@@ -35,7 +35,7 @@ export function LeadsPage() {
     stage: 'lead',
   });
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['leads-board'],
     queryFn: async () => (await api.get('/leads/board')).data.data,
   });
@@ -102,9 +102,20 @@ export function LeadsPage() {
         </div>
       </div>
 
-      {/* Kanban Board Columns */}
-      <div className="grid gap-4 xl:grid-cols-6 overflow-x-auto pb-4">
-        {stages.map((stage) => {
+      <div className="grid gap-4 overflow-x-auto pb-4 xl:grid-cols-6">
+        {isLoading &&
+          stages.map((stage) => (
+            <div
+              key={`sk-${stage}`}
+              className="space-y-2.5 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3"
+            >
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ))}
+        {!isLoading &&
+          stages.map((stage) => {
           const cfg = stageConfig[stage] || stageConfig.lead;
           const items = data?.[stage] || [];
           const totalVal = items.reduce((acc: number, item: { value: number }) => acc + (item.value || 0), 0);

@@ -298,12 +298,32 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
     }
   }
 
-  // 4. Financial Amounts
+  // 4. Financial Amounts (invoices + UPI / GPay / PhonePe success screens)
   function cleanAmount(raw: string): number | null {
     if (!raw) return null;
+    // Handle Indian numbering: 1,23,456.78 or 1,234.56
     const sanitized = raw.replace(/[^\d.]/g, '');
+    if (!sanitized || sanitized === '.') return null;
     const num = parseFloat(sanitized);
-    return isNaN(num) || num < 0 ? null : Math.round(num * 100) / 100;
+    // Ignore year-like and tiny noise values
+    if (isNaN(num) || num <= 0 || num > 100_000_000) return null;
+    if (num >= 1900 && num <= 2100 && !String(raw).includes('.')) return null;
+    return Math.round(num * 100) / 100;
+  }
+
+  function extractRupeeAmounts(source: string): number[] {
+    const found: number[] = [];
+    const patterns = [
+      /(?:₹|rs\.?|inr)\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)/gi,
+      /([0-9]{1,3}(?:,[0-9]{2,3})+(?:\.[0-9]{1,2})?)\s*(?:₹|rs\.?|inr)?/gi,
+    ];
+    for (const pat of patterns) {
+      for (const m of source.matchAll(pat)) {
+        const val = cleanAmount(m[1] || m[0]);
+        if (val !== null) found.push(val);
+      }
+    }
+    return found;
   }
 
   let grandTotal: number | null = null;
@@ -317,15 +337,26 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
   let outstandingAmount: number | null = null;
 
   const totalMatches: number[] = [];
+  const upiAmountMatches: number[] = [];
 
   for (const line of lines) {
     // Grand Total / Total Amount
-    if (/(?:grand\s*total|total\s*amount|invoice\s*total|net\s*payable|amount\s*payable|total\s*value)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
-      const match = line.match(/(?:grand\s*total|total\s*amount|invoice\s*total|net\s*payable|amount\s*payable|total\s*value)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+    if (/(?:grand\s*total|total\s*amount|invoice\s*total|net\s*payable|amount\s*payable|total\s*value|amount\s*debited)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
+      const match = line.match(/(?:grand\s*total|total\s*amount|invoice\s*total|net\s*payable|amount\s*payable|total\s*value|amount\s*debited)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
       if (match && match[1]) {
         const val = cleanAmount(match[1]);
         if (val !== null && val > 0) totalMatches.push(val);
       }
+    }
+
+    // UPI / wallet success screens: "Paid ₹500", "You paid 500", standalone ₹ amounts
+    if (
+      /(?:transaction\s*successful|payment\s*successful|paid\s*successfully|money\s*sent|sent\s*successfully|\bpaid\s*to\b|\byou\s*paid\b|\bdebited\b)/i.test(
+        line
+      ) ||
+      /^(?:₹|rs\.?)\s*[0-9]/i.test(line.trim())
+    ) {
+      upiAmountMatches.push(...extractRupeeAmounts(line));
     }
 
     // Subtotal
@@ -361,8 +392,8 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
     }
 
     // Amount Paid
-    if (/(?:amount\s*paid|paid\s*amount|received)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
-      const match = line.match(/(?:amount\s*paid|paid\s*amount|received)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+    if (/(?:amount\s*paid|paid\s*amount|received|you\s*paid|paid)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
+      const match = line.match(/(?:amount\s*paid|paid\s*amount|received|you\s*paid|paid)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
       if (match && match[1]) amountPaid = cleanAmount(match[1]);
     }
 
@@ -380,15 +411,29 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
 
   if (totalMatches.length > 0) {
     grandTotal = totalMatches[totalMatches.length - 1]; // usually the final total line
-  } else if (subtotal && totalTax) {
-    grandTotal = Math.round((subtotal + totalTax - (discount || 0)) * 100) / 100;
   } else if (amountPaid) {
     grandTotal = amountPaid;
+  } else if (upiAmountMatches.length > 0) {
+    // Prefer the largest plausible payment amount on UPI screenshots
+    grandTotal = Math.max(...upiAmountMatches);
+    amountPaid = grandTotal;
+  } else if (subtotal && totalTax) {
+    grandTotal = Math.round((subtotal + totalTax - (discount || 0)) * 100) / 100;
   } else {
-    // Search general Total: ₹XXX
-    const genericTotal = text.match(/(?:total|amount)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+    // Search general Total / Amount / ₹XXX across whole text
+    const genericTotal = text.match(
+      /(?:total|amount|paid)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i
+    );
     if (genericTotal && genericTotal[1]) {
       grandTotal = cleanAmount(genericTotal[1]);
+    }
+    if (!grandTotal) {
+      const rupeeHits = extractRupeeAmounts(text).filter((n) => n >= 1);
+      if (rupeeHits.length) {
+        // Prefer mid/large values; skip tiny fees if a larger amount exists
+        const sorted = [...rupeeHits].sort((a, b) => b - a);
+        grandTotal = sorted[0];
+      }
     }
   }
 
@@ -428,6 +473,25 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
       vendorName = v;
       break;
     }
+  }
+
+  // UPI / wallet: "Paid to Acme Store", "To: Merchant Name"
+  if (!vendorName) {
+    const paidTo = text.match(
+      /(?:paid\s*to|payment\s*to|sent\s*to|to)\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9 .,&'@_-]{2,60})/i
+    );
+    if (paidTo?.[1]) {
+      const name = paidTo[1].replace(/\s+/g, ' ').trim();
+      if (!/^(upi|success|successful|transaction|payment|bank|inr|rs)$/i.test(name)) {
+        vendorName = name.slice(0, 80);
+      }
+    }
+  }
+
+  // UPI ID as fallback identifier
+  if (!vendorName) {
+    const upiId = text.match(/\b([a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,})\b/);
+    if (upiId?.[1]) vendorName = upiId[1];
   }
 
   if (!vendorName && lines.length > 0) {
@@ -591,14 +655,18 @@ export async function extractWithGemini(
   fileBuffer: Buffer,
   mimeType: string
 ): Promise<IExtractedFinancialData | null> {
-  const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = (env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) return null;
 
-  try {
-    const model = env.GEMINI_MODEL || 'gemini-1.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const modelsToTry = [
+    env.GEMINI_MODEL || 'gemini-2.5-flash',
+    'gemini-2.5-flash',
+    'gemini-flash-latest',
+    'gemini-3.5-flash',
+    'gemini-2.5-flash-lite',
+  ].filter((m, i, arr) => m && arr.indexOf(m) === i);
 
-    const prompt = `You are a Senior Financial Auditor and Expert Document OCR Specialist for an Indian CRM accounting system.
+  const prompt = `You are a Senior Financial Auditor and Expert Document OCR Specialist for an Indian CRM accounting system.
 Analyze the attached document (invoice, receipt, bill, or salary slip) and extract financial, tax, and party details accurately.
 Follow standard Indian and International accounting principles (e.g. Subtotal + CGST + SGST or IGST = Grand Total).
 Never confuse Subtotal with Grand Total, or Amount Paid with Balance Due.
@@ -658,49 +726,66 @@ Output ONLY a valid JSON object matching this schema:
   "uncertainFields": ["string"]
 }`;
 
-    const base64Data = fileBuffer.toString('base64');
-    const body = {
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType,
-                data: base64Data,
-              },
+  const base64Data = fileBuffer.toString('base64');
+  const body = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType: mimeType === 'image/jpg' ? 'image/jpeg' : mimeType,
+              data: base64Data,
             },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.1,
-        responseMimeType: 'application/json',
+          },
+        ],
       },
-    };
+    ],
+    generationConfig: {
+      temperature: 0.1,
+      responseMimeType: 'application/json',
+    },
+  };
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+  for (const model of modelsToTry) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 45_000);
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.warn(`[DocumentScanner] Gemini API error (${res.status}):`, errText);
-      return null;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timer));
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.warn(`[DocumentScanner] Gemini API error (${res.status}) model=${model}:`, errText.slice(0, 500));
+        // Invalid API key — stop trying models
+        if (res.status === 400 || res.status === 401 || res.status === 403) {
+          if (/API_KEY_INVALID|PERMISSION_DENIED|API key not valid/i.test(errText)) {
+            console.warn('[DocumentScanner] Gemini API key rejected — falling back to offline OCR');
+            return null;
+          }
+        }
+        continue;
+      }
+
+      const json = await res.json();
+      const candidateText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!candidateText) continue;
+
+      const cleaned = candidateText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+      const parsed: IExtractedFinancialData = JSON.parse(cleaned);
+      return parsed;
+    } catch (err) {
+      console.warn(`[DocumentScanner] Gemini extraction failed (model=${model}):`, err);
     }
-
-    const json = await res.json();
-    const candidateText = json.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!candidateText) return null;
-
-    const parsed: IExtractedFinancialData = JSON.parse(candidateText);
-    return parsed;
-  } catch (err) {
-    console.warn('[DocumentScanner] Gemini extraction failed:', err);
-    return null;
   }
+
+  return null;
 }
 
 /**

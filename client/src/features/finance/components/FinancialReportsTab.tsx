@@ -109,24 +109,22 @@ export function FinancialReportsTab() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Filter and Actions Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-2xl">
+    <div className="space-y-5">
+      <div className="flex flex-col items-stretch justify-between gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-sm)] md:flex-row md:items-center">
         <div className="flex flex-wrap items-center gap-2">
-          {/* Quick period buttons */}
-          <div className="flex items-center p-1 bg-[var(--surface-sunken)] rounded-xl border border-[var(--border-subtle)]">
+          <div className="flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-subtle)] p-1">
             {[
-              { id: 'this_month', label: 'This Month' },
-              { id: 'this_year', label: 'This Year' },
-              { id: 'custom', label: 'Custom Range' },
+              { id: 'this_month', label: 'This month' },
+              { id: 'this_year', label: 'This year' },
+              { id: 'custom', label: 'Custom' },
             ].map((p) => (
               <button
                 key={p.id}
                 type="button"
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                   period === p.id
-                    ? 'bg-[var(--accent)] text-white shadow-sm'
-                    : 'text-[var(--fg-muted)] hover:text-[var(--fg-primary)]'
+                    ? 'bg-[var(--brand)] text-white shadow-sm'
+                    : 'text-[var(--fg-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--fg)]'
                 }`}
                 onClick={() => setPeriod(p.id)}
               >
@@ -137,100 +135,80 @@ export function FinancialReportsTab() {
 
           {period === 'custom' && (
             <div className="flex items-center gap-2">
-              <Input
-                type="date"
-                className="w-36 text-xs"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-              />
-              <span className="text-xs text-[var(--fg-muted)]">to</span>
-              <Input
-                type="date"
-                className="w-36 text-xs"
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
-              />
+              <Input type="date" className="w-36 text-xs" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+              <span className="text-xs text-[var(--fg-secondary)]">to</span>
+              <Input type="date" className="w-36 text-xs" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
             </div>
           )}
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handlePrint} className="text-xs gap-1.5">
-            <Printer className="w-3.5 h-3.5" /> Print Report
+          <Button variant="outline" size="sm" onClick={handlePrint} className="gap-1.5 text-xs">
+            <Printer className="h-3.5 w-3.5" /> Print
           </Button>
-          <Button variant="teal" size="sm" onClick={handleExportCSV} className="text-xs gap-1.5">
-            <Download className="w-3.5 h-3.5" /> Export CSV
+          <Button variant="teal" size="sm" onClick={handleExportCSV} className="gap-1.5 text-xs">
+            <Download className="h-3.5 w-3.5" /> Export CSV
           </Button>
         </div>
       </div>
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Income */}
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/20 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-emerald-400">Total Income</span>
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-[var(--radius)] border border-[var(--teal-border)] bg-gradient-to-br from-[var(--teal-soft)] via-white to-white p-4 shadow-[var(--shadow-sm)]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-[var(--teal-text)]">Total income</span>
+            <TrendingUp className="h-4 w-4 text-[var(--teal-text)]" />
           </div>
-          <div className="text-2xl font-bold mt-2 text-[var(--fg-primary)]">
-            {formatCurrency(summary.totalIncome)}
-          </div>
-          <div className="text-[11px] text-[var(--fg-muted)] mt-1">Total revenue collected in period</div>
+          <div className="mt-2 text-2xl font-bold text-[var(--fg)]">{formatCurrency(summary.totalIncome)}</div>
+          <div className="mt-1 text-[11px] text-[var(--fg-secondary)]">Revenue in selected period</div>
         </div>
 
-        {/* Total Expenses */}
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-transparent border border-rose-500/20 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-rose-400">Total Expenses</span>
-            <TrendingDown className="w-4 h-4 text-rose-400" />
+        <div className="rounded-[var(--radius)] border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-white p-4 shadow-[var(--shadow-sm)]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-rose-700">Total expenses</span>
+            <TrendingDown className="h-4 w-4 text-rose-700" />
           </div>
-          <div className="text-2xl font-bold mt-2 text-[var(--fg-primary)]">
-            {formatCurrency(summary.totalExpenses)}
-          </div>
-          <div className="text-[11px] text-[var(--fg-muted)] mt-1">Operational, bills & payroll costs</div>
+          <div className="mt-2 text-2xl font-bold text-[var(--fg)]">{formatCurrency(summary.totalExpenses)}</div>
+          <div className="mt-1 text-[11px] text-[var(--fg-secondary)]">Ops, bills & payroll</div>
         </div>
 
-        {/* Net Profit / Loss */}
         <div
-          className={`p-4 rounded-2xl bg-gradient-to-br ${
+          className={`rounded-[var(--radius)] border bg-gradient-to-br via-white to-white p-4 shadow-[var(--shadow-sm)] ${
             summary.netProfit >= 0
-              ? 'from-teal-500/10 via-teal-500/5 to-transparent border-teal-500/20'
-              : 'from-amber-500/10 via-amber-500/5 to-transparent border-amber-500/20'
-          } border shadow-sm`}
+              ? 'border-[var(--teal-border)] from-[var(--teal-soft)]'
+              : 'border-[var(--orange-border)] from-[var(--orange-soft)]'
+          }`}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <span
-              className={`text-xs font-medium ${summary.netProfit >= 0 ? 'text-teal-400' : 'text-amber-400'}`}
+              className={`text-xs font-bold uppercase tracking-wide ${
+                summary.netProfit >= 0 ? 'text-[var(--teal-text)]' : 'text-[var(--orange-text)]'
+              }`}
             >
-              Net {summary.netProfit >= 0 ? 'Profit' : 'Loss'}
+              Net {summary.netProfit >= 0 ? 'profit' : 'loss'}
             </span>
-            <DollarSign className="w-4 h-4 text-teal-400" />
+            <DollarSign
+              className={`h-4 w-4 ${summary.netProfit >= 0 ? 'text-[var(--teal-text)]' : 'text-[var(--orange-text)]'}`}
+            />
           </div>
-          <div className="text-2xl font-bold mt-2 text-[var(--fg-primary)]">
-            {formatCurrency(summary.netProfit)}
-          </div>
-          <div className="text-[11px] text-[var(--fg-muted)] mt-1">Income minus verified expenses</div>
+          <div className="mt-2 text-2xl font-bold text-[var(--fg)]">{formatCurrency(summary.netProfit)}</div>
+          <div className="mt-1 text-[11px] text-[var(--fg-secondary)]">Income − expenses</div>
         </div>
 
-        {/* Profit Margin */}
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent border border-blue-500/20 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-blue-400">Profit Margin</span>
-            <BarChart3 className="w-4 h-4 text-blue-400" />
+        <div className="rounded-[var(--radius)] border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-white p-4 shadow-[var(--shadow-sm)]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-sky-700">Profit margin</span>
+            <BarChart3 className="h-4 w-4 text-sky-700" />
           </div>
-          <div className="text-2xl font-bold mt-2 text-[var(--fg-primary)]">
-            {summary.margin}%
-          </div>
-          <div className="text-[11px] text-[var(--fg-muted)] mt-1">Net profit percentage of revenue</div>
+          <div className="mt-2 text-2xl font-bold text-[var(--fg)]">{summary.margin}%</div>
+          <div className="mt-1 text-[11px] text-[var(--fg-secondary)]">Net as % of revenue</div>
         </div>
       </div>
 
-      {/* Main Income vs Expense Comparison Chart */}
-      <div className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border-subtle)] space-y-4">
-        <div className="flex items-center justify-between">
+      <div className="space-y-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-sm)]">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-[var(--fg-primary)]">Income vs Expenses (Monthly)</h3>
-            <p className="text-xs text-[var(--fg-muted)]">Month-by-month comparative financial performance</p>
+            <h3 className="text-sm font-semibold text-[var(--fg)]">Income vs expenses</h3>
+            <p className="text-xs text-[var(--fg-secondary)]">Monthly comparative performance</p>
           </div>
           <div className="flex items-center gap-3 text-xs">
             <div className="flex items-center gap-1.5">
@@ -252,9 +230,9 @@ export function FinancialReportsTab() {
           {monthlyTrends.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlyTrends} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="month" stroke="rgba(255,255,255,0.4)" fontSize={11} />
-                <YAxis stroke="rgba(255,255,255,0.4)" fontSize={11} tickFormatter={(v) => `₹${v / 1000}k`} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="month" stroke="var(--fg-secondary)" fontSize={11} />
+                <YAxis stroke="var(--fg-secondary)" fontSize={11} tickFormatter={(v) => `₹${v / 1000}k`} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: 'var(--surface-sunken)',
@@ -277,13 +255,11 @@ export function FinancialReportsTab() {
         </div>
       </div>
 
-      {/* Category Breakdowns: Income & Expenses */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Category Expenses Donut Chart */}
-        <div className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border-subtle)] space-y-4">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="space-y-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-sm)]">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-[var(--fg-primary)]">Category-wise Expenses</h3>
-            <span className="text-xs text-[var(--fg-muted)]">{categoryExpenses.length} categories</span>
+            <h3 className="text-sm font-semibold text-[var(--fg)]">Expenses by category</h3>
+            <span className="text-xs text-[var(--fg-secondary)]">{categoryExpenses.length} categories</span>
           </div>
 
           <div className="h-60 w-full flex items-center justify-center">
@@ -336,11 +312,10 @@ export function FinancialReportsTab() {
           </div>
         </div>
 
-        {/* Category Income Donut Chart */}
-        <div className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border-subtle)] space-y-4">
+        <div className="space-y-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-sm)]">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-[var(--fg-primary)]">Category-wise Income</h3>
-            <span className="text-xs text-[var(--fg-muted)]">{categoryIncome.length} categories</span>
+            <h3 className="text-sm font-semibold text-[var(--fg)]">Income by category</h3>
+            <span className="text-xs text-[var(--fg-secondary)]">{categoryIncome.length} categories</span>
           </div>
 
           <div className="h-60 w-full flex items-center justify-center">
@@ -384,9 +359,9 @@ export function FinancialReportsTab() {
                   <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                   <span className="text-[var(--fg-secondary)]">{c.category}</span>
                 </div>
-                <div className="font-semibold text-emerald-400">
+                <div className="font-semibold text-[var(--teal-text)]">
                   {formatCurrency(c.total)}{' '}
-                  <span className="text-[10px] text-[var(--fg-muted)] font-normal">({c.pct}%)</span>
+                  <span className="text-[10px] font-normal text-[var(--fg-secondary)]">({c.pct}%)</span>
                 </div>
               </div>
             ))}
@@ -394,32 +369,31 @@ export function FinancialReportsTab() {
         </div>
       </div>
 
-      {/* Monthly Profit & Loss Statement Table */}
-      <div className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border-subtle)] space-y-3">
-        <h3 className="text-sm font-semibold text-[var(--fg-primary)]">Monthly Profit & Loss Statement</h3>
+      <div className="space-y-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-sm)]">
+        <h3 className="text-sm font-semibold text-[var(--fg)]">Monthly P&amp;L statement</h3>
         <TableShell>
           <table className="data-table w-full text-left">
             <thead>
               <tr>
                 <th>Month</th>
-                <th className="!text-right">Total Income</th>
-                <th className="!text-right">Total Expenses</th>
-                <th className="!text-right">Net Profit / (Loss)</th>
-                <th className="!text-right">Transactions</th>
+                <th className="!text-right">Income</th>
+                <th className="!text-right">Expenses</th>
+                <th className="!text-right">Net</th>
+                <th className="!text-right">Txns</th>
               </tr>
             </thead>
             <tbody>
               {monthlyTrends.map((m) => (
                 <tr key={m.month}>
-                  <td className="font-mono text-xs font-semibold text-[var(--fg-primary)]">{m.month}</td>
-                  <td className="!text-right text-emerald-400 font-medium">{formatCurrency(m.income)}</td>
-                  <td className="!text-right text-rose-400 font-medium">{formatCurrency(m.expense)}</td>
+                  <td className="font-mono text-xs font-semibold text-[var(--fg)]">{m.month}</td>
+                  <td className="!text-right font-medium text-[var(--teal-text)]">{formatCurrency(m.income)}</td>
+                  <td className="!text-right font-medium text-rose-700">{formatCurrency(m.expense)}</td>
                   <td className="!text-right font-bold">
-                    <span className={m.profit >= 0 ? 'text-teal-400' : 'text-amber-400'}>
+                    <span className={m.profit >= 0 ? 'text-[var(--teal-text)]' : 'text-[var(--orange-text)]'}>
                       {formatCurrency(m.profit)}
                     </span>
                   </td>
-                  <td className="!text-right text-xs text-[var(--fg-muted)]">{m.count}</td>
+                  <td className="!text-right text-xs text-[var(--fg-secondary)]">{m.count}</td>
                 </tr>
               ))}
             </tbody>

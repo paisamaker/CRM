@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import PDFDocument from 'pdfkit';
 import { stringify } from 'csv-stringify/sync';
-import { authenticate, authorize } from '../../middleware/auth.js';
+import { authenticate, authorize, requireRoles } from '../../middleware/auth.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import {
   Transaction,
@@ -47,6 +47,7 @@ import {
   format,
 } from 'date-fns';
 import { roundMoney, addMoney, subMoney } from '../../utils/money.js';
+import { adjustBankBalance, directionForTxType } from '../../utils/bankLedger.js';
 import { memoryCache } from '../../utils/cache.js';
 
 const router = Router();
@@ -393,18 +394,13 @@ router.post(
         .catch(() => null);
     }
 
-    if (status === 'approved') {
-      const bank = bankAccountId
-        ? await BankAccount.findById(bankAccountId)
-        : await BankAccount.findOne({ isPrimary: true, status: 'active' });
-      if (bank) {
-        if (body.type === 'revenue') {
-          bank.balance = addMoney(bank.balance, tx.amount);
-        } else {
-          bank.balance = subMoney(bank.balance, tx.amount);
-        }
-        await bank.save();
-      }
+    if (status === 'approved' && (body.type === 'revenue' || body.type === 'expense')) {
+      await adjustBankBalance({
+        bankAccountId: cleanBank,
+        amount: tx.amount,
+        direction: directionForTxType(body.type),
+      });
+      memoryCache.delPrefix('finance');
     }
 
     if (status === 'pending') {
@@ -511,6 +507,7 @@ router.post(
 
 router.patch(
   '/transactions/:id',
+  requireRoles('ceo'),
   authorize('transactions', 'update'),
   asyncHandler(async (req, res) => {
     const body = z
@@ -584,12 +581,26 @@ router.patch(
 
 router.delete(
   '/transactions/:id',
+  requireRoles('ceo'),
   authorize('transactions', 'delete'),
   asyncHandler(async (req, res) => {
     const existing = await Transaction.findById(req.params.id);
     if (!existing) throw new NotFoundError('Transaction not found');
-    if (['approved', 'paid'].includes(existing.status) && req.user!.role !== 'ceo') {
-      throw new ForbiddenError('Only CEO can delete approved/paid transactions');
+    // Reverse bank impact for posted income/expense before hard delete
+    if (
+      ['approved', 'paid'].includes(existing.status) &&
+      (existing.type === 'revenue' || existing.type === 'expense') &&
+      existing.bankAccount
+    ) {
+      const { adjustBankBalance, directionForTxType } = await import('../../utils/bankLedger.js');
+      const reverse = directionForTxType(existing.type) === 'credit' ? 'debit' : 'credit';
+      await adjustBankBalance({
+        bankAccountId: String(existing.bankAccount),
+        amount: existing.amount,
+        direction: reverse,
+        preferPrimary: false,
+      });
+      memoryCache.delPrefix('finance');
     }
     await Transaction.findByIdAndDelete(req.params.id);
     await writeAudit({

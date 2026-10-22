@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import PDFDocument from 'pdfkit';
-import { authenticate, authorize } from '../../middleware/auth.js';
+import { authenticate, authorize, requireRoles } from '../../middleware/auth.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { Payroll } from '../../models/Payroll.js';
 import { User } from '../../models/User.js';
@@ -11,12 +11,14 @@ import { getSettings } from '../../models/Settings.js';
 import { AppError, ForbiddenError, NotFoundError } from '../../utils/AppError.js';
 import { writeAudit } from '../../utils/audit.js';
 import { roundMoney, addMoney, subMoney } from '../../utils/money.js';
+import { adjustBankBalance } from '../../utils/bankLedger.js';
+import { memoryCache } from '../../utils/cache.js';
 import { format } from 'date-fns';
 
 const router = Router();
 router.use(authenticate);
 
-// GET /api/v1/finance/salaries/records (List all employee salary disbursements)
+// GET /api/v1/finance/salaries/records (List employee salary disbursements)
 router.get(
   '/records',
   authorize('payroll', 'read'),
@@ -25,43 +27,74 @@ router.get(
 
     if (req.query.period) filter.period = String(req.query.period).trim();
     if (req.query.status) {
-      if (req.query.status === 'paid') {
+      if (req.query.status === 'paid' || req.query.status === 'disbursed') {
         filter.status = 'disbursed';
-      } else if (req.query.status === 'pending') {
+      } else if (req.query.status === 'pending' || req.query.status === 'approved') {
         filter.status = { $in: ['draft', 'pending_approval', 'approved'] };
-      } else {
+      } else if (req.query.status !== 'all') {
         filter.status = req.query.status;
       }
     }
     if (req.query.employee) filter.employee = req.query.employee;
 
-    const records = await Payroll.find(filter)
-      .populate('employee', 'name email employeeId designation department salary')
-      .populate('createdBy', 'name email')
-      .sort({ period: -1, createdAt: -1 })
-      .lean();
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
 
-    // Summary calculation
-    const summary = records.reduce(
-      (acc, r) => {
-        if (r.status === 'disbursed') {
-          acc.totalPaid = addMoney(acc.totalPaid, r.net);
-          acc.paidCount += 1;
-        } else {
-          acc.totalPending = addMoney(acc.totalPending, r.net);
-          acc.pendingCount += 1;
-        }
-        acc.totalNet = addMoney(acc.totalNet, r.net);
-        return acc;
-      },
-      { totalPaid: 0, totalPending: 0, totalNet: 0, paidCount: 0, pendingCount: 0 }
-    );
+    const [records, total, summaryAgg, employeeIds] = await Promise.all([
+      Payroll.find(filter)
+        .populate('employee', 'name email employeeId designation department salary')
+        .populate('createdBy', 'name email')
+        .sort({ period: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Payroll.countDocuments(filter),
+      Payroll.aggregate([
+        { $match: filter },
+        {
+          $group: {
+            _id: null,
+            totalPaid: {
+              $sum: { $cond: [{ $eq: ['$status', 'disbursed'] }, '$net', 0] },
+            },
+            totalPending: {
+              $sum: { $cond: [{ $ne: ['$status', 'disbursed'] }, '$net', 0] },
+            },
+            totalNet: { $sum: '$net' },
+            paidCount: {
+              $sum: { $cond: [{ $eq: ['$status', 'disbursed'] }, 1, 0] },
+            },
+            pendingCount: {
+              $sum: { $cond: [{ $ne: ['$status', 'disbursed'] }, 1, 0] },
+            },
+          },
+        },
+      ]),
+      Payroll.distinct('employee', filter),
+    ]);
+
+    const agg = summaryAgg[0] || {
+      totalPaid: 0,
+      totalPending: 0,
+      totalNet: 0,
+      paidCount: 0,
+      pendingCount: 0,
+    };
 
     res.json({
       success: true,
       data: {
         items: records,
-        summary,
+        summary: {
+          totalPaid: roundMoney(agg.totalPaid),
+          totalPending: roundMoney(agg.totalPending),
+          totalNet: roundMoney(agg.totalNet),
+          paidCount: agg.paidCount,
+          pendingCount: agg.pendingCount,
+          totalEmployees: employeeIds.length,
+        },
+        pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) },
       },
     });
   })
@@ -159,11 +192,16 @@ router.post(
       const txDescription = `Salary payment for ${employee.name} (${body.period}) - Net: ₹${netSalary}`;
 
       if (tx) {
-        // Adjust previous bank account balance difference if amount changed
         if (bankAccount && tx.amount !== netSalary) {
           const diff = subMoney(netSalary, tx.amount);
-          bankAccount.balance = subMoney(bankAccount.balance, diff);
-          await bankAccount.save();
+          if (diff !== 0) {
+            await adjustBankBalance({
+              bankAccountId: String(bankAccount._id),
+              amount: Math.abs(diff),
+              direction: diff > 0 ? 'debit' : 'credit',
+              preferPrimary: false,
+            });
+          }
         }
         tx.amount = netSalary;
         tx.date = body.paymentDate;
@@ -192,10 +230,15 @@ router.post(
         payroll.transaction = tx._id;
 
         if (bankAccount) {
-          bankAccount.balance = subMoney(bankAccount.balance, netSalary);
-          await bankAccount.save();
+          await adjustBankBalance({
+            bankAccountId: String(bankAccount._id),
+            amount: netSalary,
+            direction: 'debit',
+            preferPrimary: false,
+          });
         }
       }
+      memoryCache.delPrefix('finance');
     } else {
       payroll.status = 'approved';
       payroll.paidOn = undefined;
@@ -224,6 +267,158 @@ router.post(
         transaction: tx,
       },
     });
+  })
+);
+
+// PATCH /api/v1/finance/salaries/:id — CEO-only update of salary components / status
+router.patch(
+  '/:id',
+  requireRoles('ceo'),
+  authorize('payroll', 'update'),
+  asyncHandler(async (req, res) => {
+    const body = z
+      .object({
+        basicSalary: z.coerce.number().min(0).optional(),
+        allowances: z.coerce.number().min(0).optional(),
+        bonuses: z.coerce.number().min(0).optional(),
+        deductions: z.coerce.number().min(0).optional(),
+        period: z.string().min(4).optional(),
+        paymentMethod: z.string().optional(),
+        transactionRef: z.string().optional(),
+        notes: z.string().optional(),
+        paymentDate: z.coerce.date().optional(),
+        paymentStatus: z.enum(['pending', 'paid']).optional(),
+      })
+      .parse(req.body);
+
+    const payroll = await Payroll.findById(req.params.id);
+    if (!payroll) throw new NotFoundError('Payroll record not found');
+
+    const before = {
+      base: payroll.base,
+      stipend: payroll.stipend,
+      incentive: payroll.incentive,
+      deductions: payroll.deductions,
+      net: payroll.net,
+      status: payroll.status,
+    };
+
+    if (body.basicSalary != null) payroll.base = roundMoney(body.basicSalary);
+    if (body.allowances != null) payroll.stipend = roundMoney(body.allowances);
+    if (body.bonuses != null) payroll.incentive = roundMoney(body.bonuses);
+    if (body.deductions != null) payroll.deductions = roundMoney(body.deductions);
+    if (body.period) payroll.period = body.period;
+    if (body.paymentMethod !== undefined) payroll.paymentMethod = body.paymentMethod;
+    if (body.transactionRef !== undefined) payroll.transactionRef = body.transactionRef;
+    if (body.notes !== undefined) payroll.notes = body.notes;
+
+    const newNet = roundMoney(
+      Math.max(0, payroll.base + payroll.stipend + payroll.incentive - payroll.deductions)
+    );
+    const oldNet = before.net;
+    const wasDisbursed = payroll.status === 'disbursed';
+
+    payroll.net = newNet;
+
+    if (body.paymentStatus === 'paid') {
+      payroll.status = 'disbursed';
+      payroll.paidOn = body.paymentDate || payroll.paidOn || new Date();
+    } else if (body.paymentStatus === 'pending') {
+      payroll.status = 'approved';
+      payroll.paidOn = undefined;
+    }
+
+    // Keep linked expense + bank in sync for previously disbursed salaries
+    if (wasDisbursed && payroll.transaction) {
+      const tx = await Transaction.findById(payroll.transaction);
+      if (tx && tx.status !== 'cancelled') {
+        if (payroll.status !== 'disbursed') {
+          // Revert paid → pending: credit bank for posted amount and cancel expense
+          if (tx.bankAccount) {
+            await adjustBankBalance({
+              bankAccountId: String(tx.bankAccount),
+              amount: tx.amount,
+              direction: 'credit',
+              preferPrimary: false,
+            });
+          }
+          tx.status = 'cancelled';
+        } else {
+          // Still paid: adjust bank for net difference only
+          const diff = subMoney(newNet, tx.amount);
+          if (diff !== 0 && tx.bankAccount) {
+            await adjustBankBalance({
+              bankAccountId: String(tx.bankAccount),
+              amount: Math.abs(diff),
+              direction: diff > 0 ? 'debit' : 'credit',
+              preferPrimary: false,
+            });
+          }
+          tx.amount = newNet;
+          tx.status = 'paid';
+          if (body.paymentDate) tx.date = body.paymentDate;
+          if (body.paymentMethod) tx.paymentMethod = body.paymentMethod;
+        }
+        await tx.save();
+      }
+    }
+
+    await payroll.save();
+    memoryCache.delPrefix('finance');
+
+    await writeAudit({
+      actor: req.user!.id,
+      action: 'salary_update',
+      entity: 'Payroll',
+      entityId: payroll._id.toString(),
+      before,
+      after: payroll,
+      req,
+    });
+
+    res.json({ success: true, data: payroll });
+  })
+);
+
+// DELETE /api/v1/finance/salaries/:id — CEO-only; reverses bank/ledger if paid
+router.delete(
+  '/:id',
+  requireRoles('ceo'),
+  authorize('payroll', 'delete'),
+  asyncHandler(async (req, res) => {
+    const payroll = await Payroll.findById(req.params.id);
+    if (!payroll) throw new NotFoundError('Payroll record not found');
+
+    if (payroll.status === 'disbursed' && payroll.transaction) {
+      const tx = await Transaction.findById(payroll.transaction);
+      if (tx) {
+        if (tx.bankAccount && tx.status !== 'cancelled') {
+          await adjustBankBalance({
+            bankAccountId: String(tx.bankAccount),
+            amount: tx.amount,
+            direction: 'credit',
+            preferPrimary: false,
+          });
+        }
+        await Transaction.findByIdAndDelete(tx._id);
+      }
+    } else if (payroll.transaction) {
+      await Transaction.findByIdAndDelete(payroll.transaction).catch(() => null);
+    }
+
+    await Payroll.findByIdAndDelete(payroll._id);
+    memoryCache.delPrefix('finance');
+
+    await writeAudit({
+      actor: req.user!.id,
+      action: 'salary_delete',
+      entity: 'Payroll',
+      entityId: String(req.params.id),
+      before: payroll,
+      req,
+    });
+
+    res.json({ success: true, data: { ok: true } });
   })
 );
 
