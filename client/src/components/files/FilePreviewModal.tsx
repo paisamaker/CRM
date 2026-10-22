@@ -8,9 +8,8 @@ import {
   RotateCw,
   FileText,
   Image as ImageIcon,
-  FileCheck,
 } from 'lucide-react';
-import { getAuthenticatedFileUrl, getFileDownloadUrl, downloadFile, isImageFile, isPdfFile } from '@/lib/api';
+import { api, getAuthenticatedFileUrl, downloadFile, isImageFile, isPdfFile } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 
@@ -35,9 +34,20 @@ interface Props {
   onClose: () => void;
 }
 
+function toApiPath(urlOrPath: string): string {
+  if (!urlOrPath) return '';
+  if (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://') || urlOrPath.startsWith('data:')) {
+    return urlOrPath;
+  }
+  return urlOrPath.startsWith('/api/v1') ? urlOrPath.replace('/api/v1', '') : urlOrPath;
+}
+
 export function FilePreviewModal({ file, onClose }: Props) {
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setZoom(1);
@@ -58,15 +68,54 @@ export function FilePreviewModal({ file, onClose }: Props) {
     };
   }, [file, onClose]);
 
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+
+    async function load() {
+      setBlobUrl(null);
+      setLoadError(null);
+      if (!file?.url) return;
+
+      // Public HTTPS (e.g. Cloudinary) can be used directly
+      if (file.url.startsWith('http://') || file.url.startsWith('https://') || file.url.startsWith('data:')) {
+        setBlobUrl(file.url);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const path = toApiPath(file.url);
+        const res = await api.get(path, { responseType: 'blob' });
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(res.data);
+        setBlobUrl(objectUrl);
+      } catch {
+        if (!cancelled) {
+          setLoadError('Could not load preview. Try download instead.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [file?.url]);
+
   if (!file) return null;
 
-  const authUrl = getAuthenticatedFileUrl(file.url);
+  // Fallback open-in-tab still uses query token for browser navigation (no Authorization header)
+  const fallbackAuthUrl = getAuthenticatedFileUrl(file.url);
+  const previewUrl = blobUrl || fallbackAuthUrl;
   const isImg = isImageFile(file.mime || file.name);
   const isPdf = isPdfFile(file.mime || file.name);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
-      {/* Top Navigation & Action Bar */}
       <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 bg-slate-900/90 px-4 md:px-6 text-white shadow-lg">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-teal-400">
@@ -106,7 +155,6 @@ export function FilePreviewModal({ file, onClose }: Props) {
           </div>
         </div>
 
-        {/* Action Controls */}
         <div className="flex items-center gap-2">
           {isImg && (
             <div className="mr-2 hidden sm:flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
@@ -139,7 +187,7 @@ export function FilePreviewModal({ file, onClose }: Props) {
           )}
 
           <a
-            href={authUrl}
+            href={fallbackAuthUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/10 hover:text-white transition"
@@ -170,12 +218,24 @@ export function FilePreviewModal({ file, onClose }: Props) {
         </div>
       </div>
 
-      {/* Main Content Area */}
       <div className="relative flex-1 overflow-auto p-4 md:p-6 flex items-center justify-center">
-        {isImg ? (
+        {loading ? (
+          <div className="text-sm text-slate-300">Loading preview…</div>
+        ) : loadError ? (
+          <div className="max-w-md rounded-2xl border border-white/15 bg-white/10 p-8 text-center text-white">
+            <p className="text-sm mb-4">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => downloadFile(file.url, file.name)}
+              className="rounded-xl bg-teal-600 px-4 py-2 text-xs font-semibold"
+            >
+              Download instead
+            </button>
+          </div>
+        ) : isImg ? (
           <div className="flex h-full w-full items-center justify-center overflow-auto">
             <img
-              src={authUrl}
+              src={previewUrl}
               alt={file.name}
               className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl transition-transform duration-200"
               style={{
@@ -185,14 +245,9 @@ export function FilePreviewModal({ file, onClose }: Props) {
           </div>
         ) : isPdf ? (
           <div className="h-full w-full max-w-6xl rounded-xl bg-white shadow-2xl overflow-hidden border border-white/20 flex flex-col">
-            <iframe
-              src={authUrl}
-              title={file.name}
-              className="w-full flex-1 border-0"
-            />
+            <iframe src={previewUrl} title={file.name} className="w-full flex-1 border-0" />
           </div>
         ) : (
-          /* Generic File Card */
           <div className="max-w-md rounded-2xl border border-white/15 bg-white/10 p-8 text-center text-white backdrop-blur-xl shadow-2xl">
             <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-white/10 text-teal-400 mb-4">
               <FileText className="h-10 w-10" />
@@ -210,15 +265,6 @@ export function FilePreviewModal({ file, onClose }: Props) {
                 <Download className="h-4 w-4" />
                 <span>Download File</span>
               </button>
-              <a
-                href={authUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10 px-4 py-2.5 text-xs font-semibold text-slate-200 transition"
-              >
-                <ExternalLink className="h-4 w-4" />
-                <span>Open Raw</span>
-              </a>
             </div>
           </div>
         )}

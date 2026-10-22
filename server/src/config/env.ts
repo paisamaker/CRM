@@ -53,6 +53,42 @@ if (!parsed.success) {
   throw new Error('Invalid environment configuration');
 }
 
+const WEAK_SECRET_FRAGMENTS = [
+  'change-me',
+  'dev-access-secret',
+  'dev-refresh-secret',
+  'replace-with-a-secure',
+  'test-access-secret',
+  'test-refresh-secret',
+];
+
+function assertProductionSecrets(data: z.infer<typeof envSchema>) {
+  if (data.NODE_ENV !== 'production') return;
+  for (const [name, value] of [
+    ['JWT_ACCESS_SECRET', data.JWT_ACCESS_SECRET],
+    ['JWT_REFRESH_SECRET', data.JWT_REFRESH_SECRET],
+  ] as const) {
+    if (value.length < 32) {
+      throw new Error(`${name} must be at least 32 characters in production`);
+    }
+    if (WEAK_SECRET_FRAGMENTS.some((frag) => value.toLowerCase().includes(frag))) {
+      throw new Error(`${name} looks like a placeholder; set a strong random secret in production`);
+    }
+  }
+  if (!data.MONGODB_URI || data.MONGODB_URI.includes('localhost')) {
+    console.warn(
+      '[env] WARNING: MONGODB_URI appears to point at localhost in production. Confirm this is intentional.'
+    );
+  }
+  if (data.STORAGE_PROVIDER === 'local') {
+    console.warn(
+      '[env] WARNING: STORAGE_PROVIDER=local on ephemeral hosts (e.g. Render free) loses uploads on restart. Prefer cloudinary.'
+    );
+  }
+}
+
+assertProductionSecrets(parsed.data);
+
 export const env = {
   ...parsed.data,
   allowedDomains: parsed.data.ALLOWED_DOMAINS.split(',')

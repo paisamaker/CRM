@@ -98,9 +98,14 @@ starmediacrm/
 11. Theme toggle + mobile sidebar layout
 12. CEO Audit Log shows recorded actions
 
+## Production deployment
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Vercel + Render + MongoDB Atlas + Cloudinary setup, env vars, and post-deploy checks.
+
 ## Notes
 
 - Google OAuth: set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `.env`
 - Email: configure SMTP; without it, messages are logged via JSON transport
-- File uploads default to local `/uploads` (`STORAGE_PROVIDER=local`)
+- File uploads: use `STORAGE_PROVIDER=cloudinary` on Render (ephemeral disk); `local` is fine for laptop/dev
 - Currency formatting defaults to INR (en-IN)
+- Never commit real API keys — keep secrets in local `.env` / host dashboards only

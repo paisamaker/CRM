@@ -66,7 +66,8 @@ export function createApp() {
           return;
         }
 
-        callback(new Error(`CORS blocked for origin: ${origin}`));
+        // Deny without throwing — throwing surfaces as an unhandled 500 in some CORS setups
+        callback(null, false);
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

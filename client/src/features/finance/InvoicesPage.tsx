@@ -57,6 +57,8 @@ export function InvoicesPage() {
   const { data: invoices, isLoading: invoicesLoading } = useQuery({
     queryKey: ['invoices'],
     queryFn: async () => (await api.get('/finance/invoices', { params: { limit: 50 } })).data.data,
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: transactions, isLoading: txLoading } = useQuery({
@@ -64,6 +66,8 @@ export function InvoicesPage() {
     queryFn: async () =>
       (await api.get('/finance/transactions', { params: { limit: 50, type: 'expense' } })).data.data,
     enabled: isManager || listTab === 'expense',
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: clients } = useQuery({

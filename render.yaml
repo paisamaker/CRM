@@ -1,10 +1,10 @@
 services:
-  # ── Backend Web Service (Render Free) ───────────────────────
+  # ── Backend Web Service ─────────────────────────────────
   - type: web
     name: starmedia-crm-api
     runtime: node
     plan: free
-    region: oregon # or ohio, frankfurt, singapore
+    region: oregon
     buildCommand: npm install && npm run build -w server
     startCommand: npm run start -w server
     healthCheckPath: /health
@@ -15,7 +15,7 @@ services:
       - key: PORT
         value: 10000
       - key: MONGODB_URI
-        sync: false # Configure your MongoDB Atlas connection string in Render Dashboard
+        sync: false
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
@@ -24,19 +24,52 @@ services:
         value: 15m
       - key: JWT_REFRESH_EXPIRES
         value: 7d
+      - key: COOKIE_SECURE
+        value: "true"
       - key: CLIENT_URL
-        sync: false # Set to your deployed Vercel frontend URL (e.g., https://starmedia-crm.vercel.app)
+        sync: false # Vercel frontend origin(s), comma-separated
       - key: API_URL
-        sync: false # Set to your deployed backend URL (e.g., https://starmedia-crm-api.onrender.com)
+        sync: false # This Render service public URL
       - key: ALLOWED_DOMAINS
         value: starmediainfluencer.com
       - key: MFA_ISSUER
         value: STAR MEDIA CRM
+      # Render free disk is ephemeral — use Cloudinary for uploads in production
       - key: STORAGE_PROVIDER
-        value: local
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: UPLOAD_MAX_MB
+        value: "10"
+      - key: DOCUMENT_SCAN_MAX_MB
+        value: "15"
+      - key: AI_OCR_PROVIDER
+        value: auto
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-1.5-flash
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
       - key: COMPANY_NAME
         value: STAR MEDIA
       - key: DEFAULT_CURRENCY
         value: INR
       - key: DEFAULT_TIMEZONE
         value: Asia/Kolkata
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false

@@ -4,7 +4,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { z } from 'zod';
 import { authenticate, authorize } from '../../middleware/auth.js';
-import { upload, publicUploadPath } from '../../middleware/upload.js';
+import { upload, publicUploadPath, finalizeUploadedFile } from '../../middleware/upload.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { DocumentFile } from '../../models/Document.js';
 import { paginate } from '../../utils/pagination.js';
@@ -64,6 +64,7 @@ router.post(
   upload.single('file'),
   asyncHandler(async (req, res) => {
     if (!req.file) throw new NotFoundError('No file uploaded');
+    const finalized = await finalizeUploadedFile(req.file);
     const meta = z
       .object({
         folder: z.string().optional(),
@@ -75,10 +76,10 @@ router.post(
       .parse(req.body);
 
     const doc = await DocumentFile.create({
-      name: req.file.originalname,
-      url: publicUploadPath(req.file.filename),
-      mime: req.file.mimetype,
-      size: req.file.size,
+      name: finalized.name,
+      url: finalized.url,
+      mime: finalized.mime,
+      size: finalized.size,
       folder: meta.folder || (meta.project ? 'projects' : 'general'),
       visibility: meta.visibility || 'company',
       project: meta.project || (meta.linkedModel === 'Project' ? meta.linkedId : undefined),
@@ -148,7 +149,10 @@ router.get(
   authorize('files', 'read'),
   asyncHandler(async (req, res) => {
     const filename = path.basename(Array.isArray(req.params.filename) ? req.params.filename[0] : req.params.filename);
-    const doc = await DocumentFile.findOne({ url: publicUploadPath(filename) });
+    const localUrl = publicUploadPath(filename);
+    const doc = await DocumentFile.findOne({
+      $or: [{ url: localUrl }, { url: { $regex: filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$' } }],
+    });
     if (doc) {
       if (
         req.user!.role === 'employee' &&
@@ -156,6 +160,14 @@ router.get(
         doc.uploadedBy.toString() !== req.user!.id
       ) {
         throw new ForbiddenError();
+      }
+      // Cloud-hosted files: redirect to the stored HTTPS URL after authz
+      if (doc.url.startsWith('http://') || doc.url.startsWith('https://')) {
+        if (req.query.download === '1' || req.query.download === 'true') {
+          res.setHeader('Content-Disposition', `attachment; filename="${doc.name || filename}"`);
+        }
+        res.redirect(doc.url);
+        return;
       }
     }
     const full = path.join(uploadRoot, filename);

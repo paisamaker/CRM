@@ -41,11 +41,17 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
-      staleTime: 60_000, // 1 minute fresh cache
+      staleTime: 60_000, // 1 minute fresh cache (override per-query for finance)
       gcTime: 1000 * 60 * 30, // Retain query cache for 30 minutes in memory
     },
   },
 });
+
+/** Prefer fresher data for money-sensitive screens. */
+export const FINANCE_QUERY_DEFAULTS = {
+  staleTime: 15_000,
+  refetchOnWindowFocus: true,
+} as const;
 
 function PageLoader() {
   return (

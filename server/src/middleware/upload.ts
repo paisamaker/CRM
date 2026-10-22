@@ -4,6 +4,8 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { env } from '../config/env.js';
 import { AppError } from '../utils/AppError.js';
+import { assertSafeUploadSignature } from '../utils/fileSignature.js';
+import { uploadDocumentToCloudinary } from '../utils/cloudinary.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadRoot = path.resolve(__dirname, '../../uploads');
@@ -42,4 +44,27 @@ export const upload = multer({
 
 export function publicUploadPath(filename: string) {
   return `/api/v1/files/${filename}`;
+}
+
+/** Validate magic bytes and optionally promote the file to Cloudinary. */
+export async function finalizeUploadedFile(file: Express.Multer.File): Promise<{
+  url: string;
+  mime: string;
+  name: string;
+  size: number;
+}> {
+  const mime = assertSafeUploadSignature(file.path, file.mimetype);
+  let url = publicUploadPath(file.filename);
+  if (env.STORAGE_PROVIDER === 'cloudinary') {
+    const cloud = await uploadDocumentToCloudinary(file.path, 'starmedia/uploads');
+    if (cloud?.secure_url) {
+      url = cloud.secure_url;
+      try {
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return { url, mime, name: file.originalname, size: file.size };
 }

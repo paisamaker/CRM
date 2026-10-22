@@ -13,6 +13,7 @@ import {
   processFinancialDocument,
   checkDuplicateDocument,
 } from './documentScanner.js';
+import { assertSafeUploadSignature } from '../../utils/fileSignature.js';
 
 const router = Router();
 router.use(authenticate);
@@ -65,6 +66,8 @@ router.post(
     if (!req.file) {
       throw new AppError('Please select a PDF or image file to scan.', 400);
     }
+
+    assertSafeUploadSignature(req.file.path, req.file.mimetype);
 
     const result = await processFinancialDocument(req.file, {
       id: req.user!.id,

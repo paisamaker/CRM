@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
-import { upload, publicUploadPath } from '../../middleware/upload.js';
+import { upload, finalizeUploadedFile } from '../../middleware/upload.js';
 import { Bill, IBill } from '../../models/Bill.js';
 import { Transaction } from '../../models/Transaction.js';
 import { BankAccount } from '../../models/BankAccount.js';
@@ -199,11 +199,12 @@ router.post(
       };
     }
     if (req.file) {
+      const finalized = await finalizeUploadedFile(req.file);
       attachment = {
-        name: req.file.originalname,
-        url: publicUploadPath(req.file.filename),
-        mime: req.file.mimetype,
-        size: req.file.size,
+        name: finalized.name,
+        url: finalized.url,
+        mime: finalized.mime,
+        size: finalized.size,
       };
     }
 
@@ -323,11 +324,12 @@ router.patch(
     }
 
     if (req.file) {
+      const finalized = await finalizeUploadedFile(req.file);
       bill.attachment = {
-        name: req.file.originalname,
-        url: publicUploadPath(req.file.filename),
-        mime: req.file.mimetype,
-        size: req.file.size,
+        name: finalized.name,
+        url: finalized.url,
+        mime: finalized.mime,
+        size: finalized.size,
       };
     }
 
@@ -380,8 +382,11 @@ router.post(
     }
 
     let receiptUrl: string | undefined;
+    let receiptName: string | undefined;
     if (req.file) {
-      receiptUrl = publicUploadPath(req.file.filename);
+      const finalized = await finalizeUploadedFile(req.file);
+      receiptUrl = finalized.url;
+      receiptName = finalized.name;
     }
 
     // Determine corresponding bank account
@@ -412,7 +417,7 @@ router.post(
       bankAccount: bankAccount?._id,
       paymentMethod: parsed.method,
       status: 'paid',
-      receipt: receiptUrl ? { name: req.file?.originalname || 'receipt', url: receiptUrl } : undefined,
+      receipt: receiptUrl ? { name: receiptName || 'receipt', url: receiptUrl } : undefined,
       notes: `Bill: ${bill.billNumber} | Party: ${bill.partyName}`,
       createdBy: req.user!.id,
     });
