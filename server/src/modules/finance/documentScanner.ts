@@ -340,6 +340,21 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
   const upiAmountMatches: number[] = [];
 
   for (const line of lines) {
+    // Payslip net salary (highest priority for salary slips)
+    if (
+      /(?:net\s*salary(?:\s*payable)?|net\s*pay|take\s*home(?:\s*pay)?|net\s*earnings)[:\s]*(?:inr|₹|rs\.?)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(
+        line
+      )
+    ) {
+      const match = line.match(
+        /(?:net\s*salary(?:\s*payable)?|net\s*pay|take\s*home(?:\s*pay)?|net\s*earnings)[:\s]*(?:inr|₹|rs\.?)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i
+      );
+      if (match?.[1]) {
+        const val = cleanAmount(match[1]);
+        if (val !== null && val > 0) totalMatches.push(val);
+      }
+    }
+
     // Grand Total / Total Amount
     if (/(?:grand\s*total|total\s*amount|invoice\s*total|net\s*payable|amount\s*payable|total\s*value|amount\s*debited)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
       const match = line.match(/(?:grand\s*total|total\s*amount|invoice\s*total|net\s*payable|amount\s*payable|total\s*value|amount\s*debited)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
@@ -509,17 +524,60 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
   let suggestedType: 'expense' | 'revenue' = 'expense';
   let suggestedCategory = 'Office Expenses';
 
-  const lower = text.toLowerCase();
+  const lower = `${text}\n${fileName || ''}`.toLowerCase();
+  const looksLikePayslip =
+    /salary\s*slip|payslip|pay\s*slip|salary\s*payout|net\s*salary|monthly\s*salary|earnings\s*statement|employee\s*name/i.test(
+      lower
+    ) || /payslip|salary[_-]?slip|salary[_-]?payout/i.test(fileName || '');
+
+  // Employee name on company payslips
+  let employeeName: string | null = null;
+  const empNameMatch = text.match(
+    /(?:employee\s*name|emp(?:loyee)?\s*name)\s*[:\-]?\s*([A-Za-z][A-Za-z .']{2,60})/i
+  );
+  if (empNameMatch?.[1]) {
+    employeeName = empNameMatch[1].replace(/\s+/g, ' ').trim();
+  } else if (fileName) {
+    const fromFile = fileName
+      .replace(/\.[^.]+$/, '')
+      .replace(/^(payslip|salary[_-]?slip|salary)[_-]*/i, '')
+      .replace(/[_-]*\d{4}-\d{2}.*$/i, '')
+      .replace(/[_-]+/g, ' ')
+      .trim();
+    if (fromFile.length >= 3 && !/^(document|scan|bill|invoice)$/i.test(fromFile)) {
+      employeeName = fromFile.replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+  }
+
+  const periodMatch =
+    text.match(/(?:period|month|for)\s*[:\-]?\s*((?:20\d{2}[-/]\d{1,2})|(?:[A-Za-z]+[\s,-]*20\d{2}))/i) ||
+    (fileName || '').match(/(20\d{2}-\d{2})/);
+  const salaryPeriod = periodMatch?.[1]?.trim() || undefined;
+
   if (lower.includes('credit note')) {
     documentType = 'credit_note';
     suggestedType = 'revenue';
   } else if (lower.includes('debit note')) {
     documentType = 'debit_note';
     suggestedType = 'expense';
-  } else if (lower.includes('salary') || lower.includes('payslip') || lower.includes('stipend')) {
+  } else if (looksLikePayslip) {
     documentType = 'salary_slip';
-    suggestedCategory = 'Employee Stipends';
+    suggestedCategory = 'Salary';
     suggestedType = 'expense';
+    // Prefer net salary amount already collected in totalMatches; also scan whole text
+    const netHit = text.match(
+      /(?:net\s*salary(?:\s*payable)?|net\s*pay|take\s*home)[:\s]*(?:inr)?\s*(?:₹|rs\.?)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i
+    );
+    if (netHit?.[1]) {
+      const netVal = cleanAmount(netHit[1]);
+      if (netVal != null) {
+        grandTotal = netVal;
+        amountPaid = netVal;
+      }
+    }
+    if (employeeName) {
+      vendorName = employeeName; // payee / employee
+    }
   } else if (lower.includes('receipt') || lower.includes('payment receipt')) {
     documentType = 'receipt';
     suggestedType = 'revenue';
@@ -527,9 +585,12 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
     documentType = 'invoice';
   }
 
-  // Check if document was issued by our company (STAR MEDIA) -> Revenue!
+  // Company letterhead invoices → revenue, but NEVER reclassify salary slips
   const isIssuedByCompany = /star\s*media/i.test(lines.slice(0, 5).join(' '));
-  if (isIssuedByCompany) {
+  if (documentType === 'salary_slip') {
+    suggestedType = 'expense';
+    suggestedCategory = 'Salary';
+  } else if (isIssuedByCompany) {
     suggestedType = 'revenue';
     suggestedCategory = 'Client Payment';
   } else if (documentType === 'receipt') {
@@ -553,7 +614,9 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
 
   // 7. Payment Status & Method
   let paymentStatus: 'paid' | 'unpaid' | 'partially_paid' = 'unpaid';
-  if (/\bunpaid\b|payment\s*(?:pending|due)|balance\s*due/i.test(text)) {
+  if (documentType === 'salary_slip') {
+    paymentStatus = 'paid';
+  } else if (/\bunpaid\b|payment\s*(?:pending|due)|balance\s*due/i.test(text)) {
     paymentStatus = 'unpaid';
   } else if (documentType === 'receipt' || /(?:payment\s*successful|\bpaid\b|receipt\s*for\s*payment|amount\s*received)/i.test(text)) {
     paymentStatus = 'paid';
@@ -635,17 +698,116 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
       suggestedCategory,
       paymentMethod,
       paymentStatus,
-      description: `${vendorName ? `${vendorName} - ` : ''}${invoiceNumber ? `Invoice #${invoiceNumber}` : 'Document Scan'}`.trim(),
+      description:
+        documentType === 'salary_slip'
+          ? `Salary payout${employeeName ? ` — ${employeeName}` : ''}${salaryPeriod ? ` (${salaryPeriod})` : ''}`
+          : `${vendorName ? `${vendorName} - ` : ''}${invoiceNumber ? `Invoice #${invoiceNumber}` : 'Document Scan'}`.trim(),
       notes: [
+        documentType === 'salary_slip' && employeeName ? `Employee: ${employeeName}` : null,
+        documentType === 'salary_slip' && salaryPeriod ? `Period: ${salaryPeriod}` : null,
         vendorGstin ? `Vendor GSTIN: ${vendorGstin}` : null,
         invoiceNumber ? `Invoice Ref: ${invoiceNumber}` : null,
         totalTax ? `Total GST: ₹${totalTax}` : null,
-      ].filter(Boolean).join(' | '),
+      ]
+        .filter(Boolean)
+        .join(' | '),
     },
     lineItems: [],
     confidence,
     uncertainFields,
   } as any;
+}
+
+/**
+ * Force correct classification for salary / payslip documents (company letterhead
+ * must not reclassify payroll as client revenue).
+ */
+export function normalizePayslipExtraction(
+  extracted: IExtractedFinancialData,
+  fileName?: string,
+  rawText?: string
+): IExtractedFinancialData {
+  const blob = `${fileName || ''}\n${rawText || ''}\n${JSON.stringify(extracted)}`.toLowerCase();
+  const isPayslip =
+    extracted.documentType === 'salary_slip' ||
+    /salary\s*slip|payslip|pay\s*slip|salary\s*payout|net\s*salary|earnings\s*statement/.test(blob) ||
+    /payslip|salary[_-]?slip|salary[_-]?payout/i.test(fileName || '');
+
+  if (!isPayslip) return extracted;
+
+  const text = rawText || '';
+  let employeeName =
+    extracted.partyDetails?.vendorName ||
+    (extracted as any).employeeName ||
+    undefined;
+  const empMatch = text.match(
+    /(?:employee\s*name|emp(?:loyee)?\s*name)\s*[:\-]?\s*([A-Za-z][A-Za-z .']{2,60})/i
+  );
+  if (empMatch?.[1]) employeeName = empMatch[1].replace(/\s+/g, ' ').trim();
+  if (!employeeName && fileName) {
+    const fromFile = fileName
+      .replace(/\.[^.]+$/, '')
+      .replace(/^(payslip|salary[_-]?slip|salary)[_-]*/i, '')
+      .replace(/[_-]*\d{4}-\d{2}.*$/i, '')
+      .replace(/[_-]+/g, ' ')
+      .trim();
+    if (fromFile.length >= 3) {
+      employeeName = fromFile.replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+  }
+
+  const periodMatch =
+    text.match(/(?:period|month)\s*[:\-]?\s*((?:20\d{2}[-/]\d{1,2})|(?:[A-Za-z]+[\s,-]*20\d{2}))/i) ||
+    (fileName || '').match(/(20\d{2}-\d{2})/);
+  const period = periodMatch?.[1]?.trim();
+
+  let net =
+    extracted.financialDetails?.grandTotal ||
+    extracted.financialDetails?.amountPaid ||
+    (extracted as any).grandTotal ||
+    0;
+  const netMatch = text.match(
+    /(?:net\s*salary(?:\s*payable)?|net\s*pay|take\s*home)[:\s]*(?:inr)?\s*(?:₹|rs\.?)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i
+  );
+  if (netMatch?.[1]) {
+    const n = parseFloat(netMatch[1].replace(/,/g, ''));
+    if (!isNaN(n) && n > 0) net = n;
+  }
+
+  const description = `Salary payout${employeeName ? ` — ${employeeName}` : ''}${period ? ` (${period})` : ''}`;
+
+  return {
+    ...extracted,
+    documentType: 'salary_slip',
+    currency: extracted.currency || 'INR',
+    partyDetails: {
+      ...extracted.partyDetails,
+      vendorName: employeeName || extracted.partyDetails?.vendorName || null,
+      customerName: 'STAR MEDIA',
+    },
+    financialDetails: {
+      ...extracted.financialDetails,
+      grandTotal: net || extracted.financialDetails?.grandTotal || 0,
+      amountPaid: net || extracted.financialDetails?.amountPaid || 0,
+      outstandingAmount: 0,
+      totalTax: extracted.financialDetails?.totalTax ?? 0,
+    },
+    transactionDetails: {
+      ...extracted.transactionDetails,
+      suggestedType: 'expense',
+      suggestedCategory: 'Salary',
+      paymentMethod: extracted.transactionDetails?.paymentMethod || 'Bank Transfer',
+      paymentStatus: 'paid',
+      description,
+      notes: [
+        employeeName ? `Employee: ${employeeName}` : null,
+        period ? `Period: ${period}` : null,
+        extracted.transactionDetails?.notes || null,
+      ]
+        .filter(Boolean)
+        .join(' | '),
+    },
+  };
 }
 
 /**
@@ -670,6 +832,14 @@ export async function extractWithGemini(
 Analyze the attached document (invoice, receipt, bill, or salary slip) and extract financial, tax, and party details accurately.
 Follow standard Indian and International accounting principles (e.g. Subtotal + CGST + SGST or IGST = Grand Total).
 Never confuse Subtotal with Grand Total, or Amount Paid with Balance Due.
+
+PAYSLIP / SALARY SLIP RULES (critical):
+- If the document is a salary slip, payslip, or earnings statement: set documentType to "salary_slip".
+- suggestedType MUST be "expense" (company paying employee), NEVER "revenue", even if company name STAR MEDIA appears on the header.
+- suggestedCategory MUST be exactly "Salary".
+- grandTotal / amountPaid MUST be the NET SALARY PAYABLE (not basic, not deductions, not "Total Deductions").
+- partyDetails.vendorName = employee full name (the payee).
+- description like "Salary payout — <Employee> (<Period>)".
 
 Output ONLY a valid JSON object matching this schema:
 {
@@ -702,7 +872,7 @@ Output ONLY a valid JSON object matching this schema:
   },
   "transactionDetails": {
     "suggestedType": "expense" or "revenue",
-    "suggestedCategory": string (e.g. "Software Purchase", "Domain", "Ads Running", "Marketing", "Office Expenses", "Employee Stipends", "Vendor Costs", "Client Payment"),
+    "suggestedCategory": string (use "Salary" for payslips; otherwise e.g. "Software Purchase", "Office Expenses", "Marketing", "Vendor Payment", "Client Payment"),
     "paymentMethod": "UPI" | "Bank Transfer" | "Credit Card" | "Cash" or null,
     "paymentStatus": "paid" | "unpaid" | "partially_paid",
     "description": string,
@@ -972,12 +1142,21 @@ export async function processFinancialDocument(
     providerUsed = isPdf ? 'pdf-parse' : rawText ? 'tesseract' : 'heuristic';
   }
 
+  // Ensure payslips are never misclassified as client revenue / wrong category
+  extracted = normalizePayslipExtraction(extracted, file.originalname, rawText);
+  if (!extracted.financialDetails) {
+    extracted.financialDetails = { grandTotal: 0 } as any;
+  }
+  if (!extracted.partyDetails) {
+    extracted.partyDetails = {} as any;
+  }
+
   // 5. Duplicate Detection Check
   const duplicateCheck = await checkDuplicateDocument(
     documentHash,
     extracted.invoiceNumber,
-    extracted.financialDetails.grandTotal,
-    extracted.partyDetails.vendorName
+    extracted.financialDetails?.grandTotal,
+    extracted.partyDetails?.vendorName
   );
 
   // 6. Secure Storage (Cloudinary if available, otherwise local persistent path)

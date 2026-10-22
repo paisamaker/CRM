@@ -125,8 +125,16 @@ export function TransactionModal({
   });
 
   const { data: employees = [] } = useQuery({
-    queryKey: ['employees-lookup'],
-    queryFn: async () => (await api.get('/users', { params: { limit: 100 } })).data.data.items || [],
+    queryKey: ['finance-salary-employees'],
+    queryFn: async () => {
+      try {
+        const res = await api.get('/finance/salaries');
+        return res.data.data?.items || [];
+      } catch {
+        const res = await api.get('/users', { params: { limit: 100, status: 'active' } });
+        return res.data.data?.items || [];
+      }
+    },
     enabled: open,
   });
 
@@ -203,61 +211,106 @@ export function TransactionModal({
   const handleScanComplete = (result: ScanResultPayload) => {
     const data = result.extractedData;
     const conf = result.confidence || { overall: 0.8, fields: {} };
+    const fileHint = `${result.fileName || ''} ${data.description || ''} ${data.documentType || ''}`.toLowerCase();
+    const isPayslip =
+      data.documentType === 'salary_slip' ||
+      data.documentType === 'salary' ||
+      /payslip|salary\s*slip|salary\s*payout|net\s*salary/.test(fileHint) ||
+      /salary/i.test(data.suggestedCategory || '');
 
-    // Determine target transaction type
-    const newType = data.suggestedTransactionType || (data.documentType === 'receipt' || data.documentType === 'invoice' ? 'expense' : 'revenue');
+    // Payslips are always company expense (never client income)
+    const newType: 'expense' | 'revenue' = isPayslip
+      ? 'expense'
+      : data.suggestedTransactionType ||
+        (data.documentType === 'receipt' || data.documentType === 'invoice' ? 'expense' : 'revenue');
 
-    // Find closest matching category
-    let matchedCategory = form.category;
-    const catList = newType === 'expense'
-      ? catData?.expense || ['Software Purchase', 'Office Expenses', 'Marketing', 'Other Expenses']
-      : catData?.income || ['Client Payment', 'Project Revenue', 'Sales Revenue', 'Other Income'];
+    const catList: string[] =
+      newType === 'expense'
+        ? catData?.expense || [
+            'Salary',
+            'Software Purchase',
+            'Office Expenses',
+            'Marketing',
+            'Other Expenses',
+          ]
+        : catData?.income || ['Client Payment', 'Project Revenue', 'Sales Revenue', 'Other Income'];
 
-    if (data.suggestedCategory && catList.includes(data.suggestedCategory)) {
-      matchedCategory = data.suggestedCategory;
-    } else if (catList.length > 0) {
-      matchedCategory = catList[0];
-    }
+    const resolveCategory = (suggested?: string) => {
+      if (isPayslip) {
+        return (
+          catList.find((c) => /^salary$/i.test(c)) ||
+          catList.find((c) => /stipend|payroll|salary/i.test(c)) ||
+          'Salary'
+        );
+      }
+      if (!suggested) return catList[0] || form.category;
+      const exact = catList.find((c) => c.toLowerCase() === suggested.toLowerCase());
+      if (exact) return exact;
+      const fuzzy = catList.find(
+        (c) =>
+          c.toLowerCase().includes(suggested.toLowerCase()) ||
+          suggested.toLowerCase().includes(c.toLowerCase())
+      );
+      return fuzzy || catList[0] || form.category;
+    };
 
-    // Try finding matching vendor or client
+    const matchedCategory = resolveCategory(data.suggestedCategory);
+
     let matchedVendorId = form.vendor;
     let matchedClientId = form.client;
+    let matchedEmployeeId = form.employee;
 
-    if (data.vendor?.name && vendors.length > 0) {
-      const vFound = vendors.find((v: any) =>
-        v.name?.toLowerCase().includes(data.vendor!.name!.toLowerCase()) ||
-        data.vendor!.name!.toLowerCase().includes(v.name?.toLowerCase())
+    if (data.vendor?.name && vendors.length > 0 && !isPayslip) {
+      const vFound = vendors.find(
+        (v: any) =>
+          v.name?.toLowerCase().includes(data.vendor!.name!.toLowerCase()) ||
+          data.vendor!.name!.toLowerCase().includes(v.name?.toLowerCase())
       );
       if (vFound) matchedVendorId = vFound._id;
     }
 
-    if (data.customer?.name && clients.length > 0) {
-      const cFound = clients.find((c: any) =>
-        c.name?.toLowerCase().includes(data.customer!.name!.toLowerCase()) ||
-        c.company?.toLowerCase().includes(data.customer!.name!.toLowerCase())
+    if (data.customer?.name && clients.length > 0 && !isPayslip) {
+      const cFound = clients.find(
+        (c: any) =>
+          c.name?.toLowerCase().includes(data.customer!.name!.toLowerCase()) ||
+          c.company?.toLowerCase().includes(data.customer!.name!.toLowerCase())
       );
       if (cFound) matchedClientId = cFound._id;
     }
 
-    // Identify uncertain fields (confidence < 0.65 or missing)
+    // Match employee for salary payouts
+    if (isPayslip && data.vendor?.name && employees.length > 0) {
+      const needle = data.vendor.name.toLowerCase();
+      const eFound = employees.find(
+        (e: any) =>
+          e.name?.toLowerCase() === needle ||
+          e.name?.toLowerCase().includes(needle) ||
+          needle.includes(e.name?.toLowerCase() || '')
+      );
+      if (eFound) matchedEmployeeId = eFound._id;
+    }
+
     const uncertain: Record<string, boolean> = {};
     const hasAmount =
       (typeof data.grandTotal === 'number' && data.grandTotal > 0) ||
       (typeof data.amountPaid === 'number' && data.amountPaid > 0) ||
       (typeof data.subtotal === 'number' && data.subtotal > 0);
-    if (!hasAmount || (conf.fields['amount'] && conf.fields['amount'] < 0.65) || (conf.fields['grandTotal'] && conf.fields['grandTotal'] < 0.65)) {
+    if (
+      !hasAmount ||
+      (conf.fields['amount'] && conf.fields['amount'] < 0.65) ||
+      (conf.fields['grandTotal'] && conf.fields['grandTotal'] < 0.65)
+    ) {
       uncertain['amount'] = true;
     }
     if (!data.documentDate || (conf.fields['documentDate'] && conf.fields['documentDate'] < 0.65)) {
       uncertain['date'] = true;
     }
-    if (data.taxableAmount && !data.totalTax && (conf.fields['totalTax'] && conf.fields['totalTax'] < 0.65)) {
+    if (data.taxableAmount && !data.totalTax && conf.fields['totalTax'] && conf.fields['totalTax'] < 0.65) {
       uncertain['taxAmount'] = true;
     }
 
     setUncertainFields(uncertain);
 
-    // Auto-fill form — prefer grandTotal, then amountPaid / subtotal
     const resolvedAmount =
       (typeof data.grandTotal === 'number' && data.grandTotal > 0 && data.grandTotal) ||
       (typeof data.amountPaid === 'number' && data.amountPaid > 0 && data.amountPaid) ||
@@ -266,27 +319,36 @@ export function TransactionModal({
 
     const docNum = data.invoiceNumber || data.billNumber || data.receiptNumber || '';
     const partyName = (newType === 'expense' ? data.vendor?.name : data.customer?.name) || '';
-    const suggestedTitle = docNum
-      ? `${docNum}${partyName ? ` - ${partyName}` : ''}`
-      : partyName
-      ? `${partyName} ${newType === 'expense' ? 'Bill' : 'Payment'}`
-      : data.description?.slice(0, 80) ||
-        (resolvedAmount ? `${matchedCategory} ₹${resolvedAmount}` : `${matchedCategory} Document`);
+    const periodFromFile = (result.fileName || '').match(/(20\d{2}-\d{2})/)?.[1];
+    const suggestedTitle = isPayslip
+      ? `Salary: ${partyName || 'Employee'}${periodFromFile ? ` (${periodFromFile})` : ''}`
+      : data.description?.startsWith('Salary')
+        ? data.description.slice(0, 80)
+        : docNum
+          ? `${docNum}${partyName ? ` - ${partyName}` : ''}`
+          : partyName
+            ? `${partyName} ${newType === 'expense' ? 'Bill' : 'Payment'}`
+            : data.description?.slice(0, 80) ||
+              (resolvedAmount ? `${matchedCategory} ₹${resolvedAmount}` : `${matchedCategory} Document`);
 
-    // Normalize payment method to form select values
     const rawMethod = (data.paymentMethod || '').toLowerCase();
     let paymentMethod = data.paymentMethod || '';
     if (/upi|gpay|phonepe|paytm|bhim/.test(rawMethod)) paymentMethod = 'UPI';
     else if (/card|visa|master|rupay|credit|debit/.test(rawMethod)) paymentMethod = 'Credit Card';
     else if (/cash/.test(rawMethod)) paymentMethod = 'Cash';
     else if (/neft|rtgs|imps|bank|transfer|net\s*banking/.test(rawMethod)) paymentMethod = 'Bank Transfer';
+    if (isPayslip && !paymentMethod) paymentMethod = 'Bank Transfer';
 
     setForm((prev) => ({
       ...prev,
       type: newType,
       category: matchedCategory,
       amount: resolvedAmount != null ? String(resolvedAmount) : prev.amount,
-      taxAmount: data.totalTax != null && data.totalTax > 0 ? String(data.totalTax) : prev.taxAmount || '0',
+      taxAmount: isPayslip
+        ? '0'
+        : data.totalTax != null && data.totalTax > 0
+          ? String(data.totalTax)
+          : prev.taxAmount || '0',
       title: suggestedTitle || prev.title,
       description:
         data.description ||
@@ -294,13 +356,15 @@ export function TransactionModal({
         (data.vendor?.address ? `Address: ${data.vendor.address}` : prev.description),
       date: data.documentDate || prev.date,
       paymentMethod: paymentMethod || prev.paymentMethod || 'UPI',
-      vendor: matchedVendorId,
-      client: matchedClientId,
+      vendor: isPayslip ? '' : matchedVendorId,
+      client: isPayslip ? '' : matchedClientId,
+      employee: matchedEmployeeId || prev.employee,
       notes: [
-        prev.notes,
+        isPayslip ? 'Salary payout from scanned payslip' : '',
         docNum ? `Scanned Doc #${docNum}` : '',
         data.vendor?.gstin ? `Vendor GSTIN: ${data.vendor.gstin}` : '',
-        data.vendor?.name && !matchedVendorId ? `Payee: ${data.vendor.name}` : '',
+        data.vendor?.name && isPayslip ? `Employee: ${data.vendor.name}` : '',
+        data.vendor?.name && !isPayslip && !matchedVendorId ? `Payee: ${data.vendor.name}` : '',
         data.paymentStatus ? `Payment status: ${data.paymentStatus}` : '',
         result.extractionEngine ? `OCR: ${result.extractionEngine}` : '',
       ]

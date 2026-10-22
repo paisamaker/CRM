@@ -86,6 +86,7 @@ export function IncomeExpenseTab({ type }: Props) {
   const categories = isIncome
     ? categoriesData?.incomeCategories || ['Client Payment', 'Project Revenue', 'Service Revenue', 'Other Income']
     : categoriesData?.expenseCategories || [
+        'Salary',
         'Software Purchase',
         'Office Expenses',
         'Marketing',
@@ -93,6 +94,7 @@ export function IncomeExpenseTab({ type }: Props) {
         'Internet and Electricity',
         'Equipment Purchase',
         'Travel',
+        'Employee Stipends',
         'Other Expenses',
       ];
 

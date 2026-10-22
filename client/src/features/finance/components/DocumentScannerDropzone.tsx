@@ -18,7 +18,16 @@ import { Button } from '@/components/ui/Button';
 import { toast } from 'sonner';
 
 export interface ExtractedFinancialData {
-  documentType?: 'invoice' | 'receipt' | 'bill' | 'credit_note' | 'debit_note' | 'salary' | 'other';
+  documentType?:
+    | 'invoice'
+    | 'receipt'
+    | 'bill'
+    | 'credit_note'
+    | 'debit_note'
+    | 'salary'
+    | 'salary_slip'
+    | 'tax_invoice'
+    | 'other';
   suggestedTransactionType?: 'expense' | 'revenue';
   suggestedCategory?: string;
   invoiceNumber?: string;

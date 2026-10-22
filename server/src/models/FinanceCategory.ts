@@ -37,6 +37,7 @@ export const DEFAULT_INCOME_CATEGORIES = [
 ] as const;
 
 export const DEFAULT_EXPENSE_CATEGORIES = [
+  'Salary',
   'Software Purchase',
   'Office Expenses',
   'Marketing',
@@ -45,5 +46,6 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   'Internet and Electricity',
   'Travel',
   'Vendor Payment',
+  'Employee Stipends',
   'Other Expenses',
 ] as const;

@@ -212,7 +212,7 @@ router.post(
       } else {
         tx = await Transaction.create({
           type: 'expense',
-          category: 'Operations',
+          category: 'Salary',
           amount: netSalary,
           currency: 'INR',
           date: body.paymentDate,

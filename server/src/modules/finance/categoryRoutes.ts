@@ -13,26 +13,32 @@ import { writeAudit } from '../../utils/audit.js';
 const router = Router();
 router.use(authenticate);
 
-// Auto-seed default categories if database is empty
+// Seed defaults; also upsert any newly added defaults (e.g. Salary)
 async function ensureDefaultCategories() {
-  const count = await FinanceCategory.countDocuments();
-  if (count === 0) {
-    const defaultCategories = [
-      ...DEFAULT_INCOME_CATEGORIES.map((name) => ({
-        name,
-        type: 'income' as const,
-        isDefault: true,
-        isActive: true,
-      })),
-      ...DEFAULT_EXPENSE_CATEGORIES.map((name) => ({
-        name,
-        type: 'expense' as const,
-        isDefault: true,
-        isActive: true,
-      })),
-    ];
-    await FinanceCategory.insertMany(defaultCategories, { ordered: false }).catch(() => null);
-  }
+  const defaults = [
+    ...DEFAULT_INCOME_CATEGORIES.map((name) => ({
+      name,
+      type: 'income' as const,
+      isDefault: true,
+      isActive: true,
+    })),
+    ...DEFAULT_EXPENSE_CATEGORIES.map((name) => ({
+      name,
+      type: 'expense' as const,
+      isDefault: true,
+      isActive: true,
+    })),
+  ];
+
+  await Promise.all(
+    defaults.map((cat) =>
+      FinanceCategory.updateOne(
+        { type: cat.type, name: cat.name },
+        { $setOnInsert: cat },
+        { upsert: true }
+      ).catch(() => null)
+    )
+  );
 }
 
 // GET /api/v1/finance/categories

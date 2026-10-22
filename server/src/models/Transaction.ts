@@ -84,6 +84,7 @@ transactionSchema.index({ client: 1, date: -1 });
 export const Transaction = mongoose.model<ITransaction>('Transaction', transactionSchema);
 
 export const EXPENSE_CATEGORIES = [
+  'Salary',
   'Software Purchase',
   'Domain',
   'Ads Running',

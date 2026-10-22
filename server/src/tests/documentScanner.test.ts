@@ -3,6 +3,7 @@ import {
   computeFileHash,
   validateDocumentFile,
   parseFinancialTextWithHeuristics,
+  normalizePayslipExtraction,
 } from '../modules/finance/documentScanner.js';
 
 describe('Document Scanner & AI Extraction Engine', () => {
@@ -174,6 +175,54 @@ describe('Document Scanner & AI Extraction Engine', () => {
       expect(result.grandTotal).toBeUndefined();
       expect(result.totalTax).toBeUndefined();
       expect(result.vendor?.gstin).toBeUndefined();
+    });
+
+    it('should classify company payslips as Salary expense with net amount', () => {
+      const payslipText = `
+        STAR MEDIA
+        MONTHLY SALARY SLIP & EARNINGS STATEMENT
+        Period: 2026-10
+        Employee Name: sahil bhagat
+        Employee ID: SNC033
+        Basic Salary 15000
+        Total Deductions 0
+        NET SALARY PAYABLE: INR ₹ 15,000
+      `;
+
+      const result = parseFinancialTextWithHeuristics(
+        payslipText,
+        'Payslip_sahil_bhagat_2026-10.pdf'
+      );
+
+      expect(result.documentType).toBe('salary_slip');
+      expect(result.transactionDetails.suggestedType).toBe('expense');
+      expect(result.transactionDetails.suggestedCategory).toBe('Salary');
+      expect(result.financialDetails.grandTotal).toBe(15000);
+      expect(result.partyDetails.vendorName?.toLowerCase()).toContain('sahil');
+    });
+
+    it('should normalize misclassified Gemini payslip results', () => {
+      const normalized = normalizePayslipExtraction(
+        {
+          documentType: 'bill',
+          currency: 'INR',
+          partyDetails: { vendorName: 'STAR MEDIA' },
+          financialDetails: { grandTotal: 15000, amountPaid: 15000 },
+          transactionDetails: {
+            suggestedType: 'revenue',
+            suggestedCategory: 'Software Purchase',
+            paymentStatus: 'paid',
+            description: 'STAR MEDIA Bill',
+          },
+        } as any,
+        'Payslip_sahil_bhagat_2026-10.pdf',
+        'Employee Name: sahil bhagat\nNET SALARY PAYABLE: 15000'
+      );
+
+      expect(normalized.documentType).toBe('salary_slip');
+      expect(normalized.transactionDetails.suggestedType).toBe('expense');
+      expect(normalized.transactionDetails.suggestedCategory).toBe('Salary');
+      expect(normalized.partyDetails.vendorName?.toLowerCase()).toContain('sahil');
     });
   });
 });
