@@ -19,6 +19,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input, Label, Select } from '@/components/ui/Input';
 import { DocumentScannerDropzone, type ScanResultPayload } from './DocumentScannerDropzone';
+import { syncFinanceQueries } from '../financeSync';
 
 export interface BillItem {
   _id?: string;
@@ -347,11 +348,9 @@ export function BillModal({ open, onClose, initialType = 'payable', editingBill,
       }
       return (await api.post('/finance/bills', payload)).data;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(isEditing ? 'Bill updated' : 'Bill created successfully');
-      qc.invalidateQueries({ queryKey: ['finance-bills'] });
-      qc.invalidateQueries({ queryKey: ['finance-dashboard-summary'] });
-      qc.invalidateQueries({ queryKey: ['finance-reports'] });
+      await syncFinanceQueries(qc);
       onClose();
     },
     onError: (err: any) => {

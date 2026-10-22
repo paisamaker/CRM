@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/Button';
 import { Input, Label, Select } from '@/components/ui/Input';
 import { useAuthStore } from '@/stores/auth';
 import { DocumentScannerDropzone, type ScanResultPayload } from './DocumentScannerDropzone';
+import { syncFinanceQueries } from '../financeSync';
 
 export interface TransactionItem {
   _id?: string;
@@ -380,7 +381,7 @@ export function TransactionModal({
       }
       return (await api.post('/finance/transactions', payload)).data;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(
         isEditing
           ? 'Transaction updated successfully'
@@ -390,11 +391,7 @@ export function TransactionModal({
           ? 'Expense submitted for CEO approval'
           : 'Transaction recorded successfully'
       );
-      qc.invalidateQueries({ queryKey: ['transactions'] });
-      qc.invalidateQueries({ queryKey: ['finance-dashboard-summary'] });
-      qc.invalidateQueries({ queryKey: ['finance-reports'] });
-      qc.invalidateQueries({ queryKey: ['finance-overview'] });
-      qc.invalidateQueries({ queryKey: ['approvals'] });
+      await syncFinanceQueries(qc);
       onClose();
     },
     onError: (e) => toast.error(getErrorMessage(e)),

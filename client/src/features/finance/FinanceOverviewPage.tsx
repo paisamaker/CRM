@@ -24,6 +24,7 @@ import { FinanceCategoriesModal } from './components/FinanceCategoriesModal';
 import { TransactionModal } from './components/TransactionModal';
 import { BillModal } from './components/BillModal';
 import { PaySalaryModal } from './components/PaySalaryModal';
+import { syncFinanceQueries } from './financeSync';
 
 type FinanceTab = 'dashboard' | 'income' | 'expenses' | 'bills' | 'salary' | 'reports';
 
@@ -42,14 +43,7 @@ export function FinanceOverviewPage() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ['finance-dashboard-summary'] }),
-        qc.invalidateQueries({ queryKey: ['finance-transactions'] }),
-        qc.invalidateQueries({ queryKey: ['finance-bills'] }),
-        qc.invalidateQueries({ queryKey: ['finance-salaries'] }),
-        qc.invalidateQueries({ queryKey: ['finance-reports'] }),
-        qc.invalidateQueries({ queryKey: ['bank-accounts'] }),
-      ]);
+      await syncFinanceQueries(qc);
       toast.success('Financial ledger synchronized');
     } catch {
       toast.error('Sync failed');

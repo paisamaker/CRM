@@ -18,6 +18,7 @@ import {
   Eye,
   FileCheck,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -28,6 +29,7 @@ import { TableShell, EmptyState } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { BillModal, type BillItem } from './BillModal';
 import { RecordBillPaymentModal } from './RecordBillPaymentModal';
+import { syncFinanceQueries } from '../financeSync';
 
 export function BillsReceiptsTab() {
   const qc = useQueryClient();
@@ -47,6 +49,19 @@ export function BillsReceiptsTab() {
   const [selectedBillForPayment, setSelectedBillForPayment] = useState<BillItem | null>(null);
 
   const [viewBill, setViewBill] = useState<BillItem | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      await syncFinanceQueries(qc);
+      toast.success('Bills & invoices ledger synchronized');
+    } catch {
+      toast.error('Sync failed');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Fetch Bills from API
   const { data: billsData, isLoading } = useQuery({
@@ -66,11 +81,9 @@ export function BillsReceiptsTab() {
   // Delete / Cancel mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => (await api.delete(`/finance/bills/${id}`)).data,
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Bill cancelled/deleted safely');
-      qc.invalidateQueries({ queryKey: ['finance-bills'] });
-      qc.invalidateQueries({ queryKey: ['finance-dashboard-summary'] });
-      qc.invalidateQueries({ queryKey: ['finance-reports'] });
+      await syncFinanceQueries(qc);
     },
     onError: (err: any) => {
       toast.error(getErrorMessage(err) || 'Failed to delete bill');
@@ -154,6 +167,17 @@ export function BillsReceiptsTab() {
             <div className="text-[11px] text-[var(--fg-muted)] mt-1">Payable & Receivable records</div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs gap-1 whitespace-nowrap"
+              onClick={handleSync}
+              disabled={isSyncing}
+              title="Instantly refresh bills ledger"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-teal-400' : ''}`} />
+              <span>{isSyncing ? 'Syncing…' : 'Sync'}</span>
+            </Button>
             <Button
               size="sm"
               variant="outline"

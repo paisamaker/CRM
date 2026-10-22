@@ -33,9 +33,14 @@ router.get(
   asyncHandler(async (req, res) => {
     const filter: Record<string, unknown> = {};
 
-    if (req.query.type) filter.type = req.query.type;
-    if (req.query.paymentStatus) filter.paymentStatus = req.query.paymentStatus;
-    if (req.query.category) filter.category = req.query.category;
+    const pType = String(req.query.type || '');
+    if (pType && pType !== 'all') filter.type = pType;
+
+    const pStatus = String(req.query.paymentStatus || req.query.status || '');
+    if (pStatus && pStatus !== 'all') filter.paymentStatus = pStatus;
+
+    const pCat = String(req.query.category || '');
+    if (pCat && pCat !== 'all') filter.category = pCat;
 
     if (req.query.search) {
       const q = String(req.query.search).trim();
@@ -47,10 +52,12 @@ router.get(
       ];
     }
 
-    if (req.query.from || req.query.to) {
+    const fromDate = (req.query.from || req.query.startDate) as string | undefined;
+    const toDate = (req.query.to || req.query.endDate) as string | undefined;
+    if (fromDate || toDate) {
       const dateFilter: Record<string, unknown> = {};
-      if (req.query.from) dateFilter.$gte = startOfDay(new Date(String(req.query.from)));
-      if (req.query.to) dateFilter.$lte = endOfDay(new Date(String(req.query.to)));
+      if (fromDate) dateFilter.$gte = startOfDay(new Date(fromDate));
+      if (toDate) dateFilter.$lte = endOfDay(new Date(toDate));
       filter.billDate = dateFilter;
     }
 

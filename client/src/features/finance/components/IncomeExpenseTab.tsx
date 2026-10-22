@@ -23,6 +23,7 @@ import {
   Scan,
   Sparkles,
   Calculator,
+  RefreshCw,
 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -32,6 +33,7 @@ import { Badge, statusTone } from '@/components/ui/Badge';
 import { TableShell, EmptyState } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { TransactionModal, type TransactionItem } from './TransactionModal';
+import { syncFinanceQueries } from '../financeSync';
 
 interface Props {
   type: 'revenue' | 'expense';
@@ -59,6 +61,19 @@ export function IncomeExpenseTab({ type }: Props) {
   const [autoOpenScanner, setAutoOpenScanner] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<TransactionItem | null>(null);
   const [viewTransaction, setViewTransaction] = useState<any | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      await syncFinanceQueries(qc);
+      toast.success(`${label} ledger refreshed`);
+    } catch {
+      toast.error('Sync failed');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Fetch dynamic categories
   const { data: categoriesData } = useQuery({
@@ -128,12 +143,9 @@ export function IncomeExpenseTab({ type }: Props) {
   // Delete / Reversal mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => (await api.delete(`/finance/transactions/${id}`)).data,
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Transaction reversed/deleted safely and ledger updated');
-      qc.invalidateQueries({ queryKey: ['finance-transactions'] });
-      qc.invalidateQueries({ queryKey: ['transactions'] });
-      qc.invalidateQueries({ queryKey: ['finance-dashboard-summary'] });
-      qc.invalidateQueries({ queryKey: ['finance-reports'] });
+      await syncFinanceQueries(qc);
     },
     onError: (err: any) => {
       toast.error(getErrorMessage(err) || 'Failed to reverse transaction');
@@ -188,6 +200,18 @@ export function IncomeExpenseTab({ type }: Props) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-9 px-3 gap-1.5 whitespace-nowrap"
+            onClick={handleSync}
+            disabled={isSyncing}
+            title="Instantly refresh and sync ledger data"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-teal-400' : ''}`} />
+            <span>{isSyncing ? 'Syncing…' : 'Sync'}</span>
+          </Button>
+
           <Button
             size="sm"
             variant="outline"

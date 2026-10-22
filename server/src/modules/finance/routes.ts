@@ -200,9 +200,13 @@ router.get(
       ];
     }
 
-    if (req.query.from || req.query.to) {
-      const { start, end } = parseRange(String(req.query.from || ''), String(req.query.to || ''));
-      filter.date = { $gte: start, $lte: end };
+    const fromDate = (req.query.from || req.query.startDate) as string | undefined;
+    const toDate = (req.query.to || req.query.endDate) as string | undefined;
+    if (fromDate || toDate) {
+      const dateFilterObj: Record<string, Date> = {};
+      if (fromDate) dateFilterObj.$gte = startOfDay(new Date(fromDate));
+      if (toDate) dateFilterObj.$lte = endOfDay(new Date(toDate));
+      filter.date = dateFilterObj;
     }
 
     const data = await paginate(Transaction, filter, req, [

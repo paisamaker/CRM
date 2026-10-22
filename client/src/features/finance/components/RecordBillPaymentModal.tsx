@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/Button';
 import { Input, Label, Select } from '@/components/ui/Input';
 import { formatCurrency } from '@/lib/utils';
 import type { BillItem } from './BillModal';
+import { syncFinanceQueries } from '../financeSync';
 
 interface Props {
   open: boolean;
@@ -117,14 +118,9 @@ export function RecordBillPaymentModal({ open, onClose, bill }: Props) {
 
       return (await api.post(`/finance/bills/${bill._id}/payments`, payload)).data;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Payment recorded successfully. Financial ledger updated.');
-      qc.invalidateQueries({ queryKey: ['finance-bills'] });
-      qc.invalidateQueries({ queryKey: ['finance-transactions'] });
-      qc.invalidateQueries({ queryKey: ['transactions'] });
-      qc.invalidateQueries({ queryKey: ['finance-dashboard-summary'] });
-      qc.invalidateQueries({ queryKey: ['finance-reports'] });
-      qc.invalidateQueries({ queryKey: ['bank-accounts'] });
+      await syncFinanceQueries(qc);
       onClose();
     },
     onError: (err: any) => {

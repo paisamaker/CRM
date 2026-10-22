@@ -9,6 +9,7 @@ import { Badge, statusTone } from '@/components/ui/Badge';
 import { Input, Label } from '@/components/ui/Input';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
+import { syncFinanceQueries } from '../finance/financeSync';
 
 const tabs = ['pending', 'approved', 'rejected', 'all'] as const;
 
@@ -32,30 +33,33 @@ export function ApprovalsPage() {
 
   const approve = useMutation({
     mutationFn: async (id: string) => api.post(`/approvals/${id}/approve`),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Approved');
       qc.invalidateQueries({ queryKey: ['approvals'] });
+      await syncFinanceQueries(qc);
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
   const reject = useMutation({
     mutationFn: async () => api.post(`/approvals/${rejectId}/reject`, { reason }),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Rejected');
       setRejectId(null);
       setReason('');
       qc.invalidateQueries({ queryKey: ['approvals'] });
+      await syncFinanceQueries(qc);
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
   const bulk = useMutation({
     mutationFn: async () => api.post('/approvals/bulk', { ids: selected, action: 'approve' }),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Bulk approved');
       setSelected([]);
       qc.invalidateQueries({ queryKey: ['approvals'] });
+      await syncFinanceQueries(qc);
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
