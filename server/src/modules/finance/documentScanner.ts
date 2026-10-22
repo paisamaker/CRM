@@ -186,6 +186,84 @@ export async function extractTextFromImageOCR(filePathOrBuffer: string | Buffer)
   }
 }
 
+/** Extract net salary + employee from payslip text (PDFKit often splits label/value lines). */
+export function extractPayslipFields(
+  rawText: string,
+  fileName?: string
+): { net: number | null; employeeName: string | null; period: string | null } {
+  const text = rawText || '';
+  const collapsed = text.replace(/[ \t]+/g, ' ').replace(/\n+/g, '\n');
+
+  // Prefer filename: Payslip_sahil_bhagat_2026-10.pdf
+  let employeeName: string | null = null;
+  if (fileName) {
+    const fromFile = fileName
+      .replace(/\.[^.]+$/, '')
+      .replace(/^(payslip|salary[_-]?slip|salary)[_-]*/i, '')
+      .replace(/[_-]*\d{4}-\d{2}.*$/i, '')
+      .replace(/[_-]+/g, ' ')
+      .trim();
+    if (
+      fromFile.length >= 3 &&
+      !/^(document|scan|bill|invoice|employee|id)$/i.test(fromFile) &&
+      !/^employee\s*id$/i.test(fromFile)
+    ) {
+      employeeName = fromFile.replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+  }
+
+  // Avoid capturing the next label ("Employee ID") when PDF columns are flattened
+  const empPatterns = [
+    /employee\s*name\s*[:\-]?\s*([A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+){0,3})(?=\s*(?:employee\s*id|department|designation|payment|\n|$))/i,
+    /employee\s*name\s*[:\-]?\s*\n\s*([A-Za-z][A-Za-z]+(?:\s+[A-Za-z]+){0,3})/i,
+  ];
+  for (const pat of empPatterns) {
+    const m = collapsed.match(pat) || text.match(pat);
+    if (m?.[1] && !/^(employee|id|department|designation|payment|status)$/i.test(m[1].trim())) {
+      employeeName = m[1].replace(/\s+/g, ' ').trim();
+      break;
+    }
+  }
+
+  const periodMatch =
+    text.match(/(?:period|month)\s*[:\-]?\s*((?:20\d{2}[-/]\d{1,2})|(?:[A-Za-z]{3,9}[\s,-]*20\d{2}))/i) ||
+    (fileName || '').match(/(20\d{2}-\d{2})/);
+  const period = periodMatch?.[1]?.trim() || null;
+
+  // Net salary: allow amount on same or following lines (PDFKit layout)
+  const netPatterns = [
+    /net\s*salary(?:\s*payable)?\s*[:\-]?\s*(?:inr)?\s*(?:₹|rs\.?)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+|[0-9]{3,}(?:\.[0-9]{1,2})?)/i,
+    /net\s*salary(?:\s*payable)?[\s\S]{0,80}?(?:inr\s*)?(?:₹|rs\.?)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+|[0-9]{3,}(?:\.[0-9]{1,2})?)/i,
+    /(?:net\s*pay|take\s*home(?:\s*pay)?)\s*[:\-]?\s*(?:inr)?\s*(?:₹|rs\.?)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+|[0-9]{3,})/i,
+    /basic\s*salary[\s\S]{0,40}?(?:₹|rs\.?)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+|[0-9]{3,})/i,
+  ];
+
+  let net: number | null = null;
+  for (const pat of netPatterns) {
+    const m = text.match(pat);
+    if (m?.[1]) {
+      const n = parseFloat(m[1].replace(/,/g, ''));
+      // Ignore day-of-month noise (1–31) and tiny values for salary
+      if (!isNaN(n) && n >= 100) {
+        net = Math.round(n * 100) / 100;
+        break;
+      }
+    }
+  }
+
+  // Last resort: largest ₹ amount on the page that looks like salary (>= 500)
+  if (net == null) {
+    const amounts: number[] = [];
+    for (const m of text.matchAll(/(?:₹|rs\.?|inr)\s*([0-9]{1,3}(?:,[0-9]{2,3})+|[0-9]{3,}(?:\.[0-9]{1,2})?)/gi)) {
+      const n = parseFloat((m[1] || '').replace(/,/g, ''));
+      if (!isNaN(n) && n >= 500) amounts.push(n);
+    }
+    if (amounts.length) net = Math.max(...amounts);
+  }
+
+  return { net, employeeName, period };
+}
+
 /**
  * Parse raw extracted text using comprehensive financial regex and heuristics.
  */
@@ -406,10 +484,22 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
       if (match && match[1]) discount = cleanAmount(match[1]);
     }
 
-    // Amount Paid
-    if (/(?:amount\s*paid|paid\s*amount|received|you\s*paid|paid)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(line)) {
-      const match = line.match(/(?:amount\s*paid|paid\s*amount|received|you\s*paid|paid)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
-      if (match && match[1]) amountPaid = cleanAmount(match[1]);
+    // Amount Paid — avoid bare "PAID" (payslip status next to date day "22")
+    if (
+      /(?:amount\s*paid|paid\s*amount|you\s*paid|amount\s*received|received\s*with\s*thanks)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i.test(
+        line
+      )
+    ) {
+      const match = line.match(
+        /(?:amount\s*paid|paid\s*amount|you\s*paid|amount\s*received|received\s*with\s*thanks)[:\s]*(?:₹|rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i
+      );
+      if (match && match[1]) {
+        const val = cleanAmount(match[1]);
+        // Skip day-of-month style values when line also looks like a calendar date
+        if (val != null && !(val <= 31 && /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{4})\b/i.test(line))) {
+          amountPaid = val;
+        }
+      }
     }
 
     // Balance / Outstanding
@@ -526,33 +616,13 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
 
   const lower = `${text}\n${fileName || ''}`.toLowerCase();
   const looksLikePayslip =
-    /salary\s*slip|payslip|pay\s*slip|salary\s*payout|net\s*salary|monthly\s*salary|earnings\s*statement|employee\s*name/i.test(
+    /salary\s*slip|payslip|pay\s*slip|salary\s*payout|net\s*salary|monthly\s*salary|earnings\s*statement/i.test(
       lower
     ) || /payslip|salary[_-]?slip|salary[_-]?payout/i.test(fileName || '');
 
-  // Employee name on company payslips
-  let employeeName: string | null = null;
-  const empNameMatch = text.match(
-    /(?:employee\s*name|emp(?:loyee)?\s*name)\s*[:\-]?\s*([A-Za-z][A-Za-z .']{2,60})/i
-  );
-  if (empNameMatch?.[1]) {
-    employeeName = empNameMatch[1].replace(/\s+/g, ' ').trim();
-  } else if (fileName) {
-    const fromFile = fileName
-      .replace(/\.[^.]+$/, '')
-      .replace(/^(payslip|salary[_-]?slip|salary)[_-]*/i, '')
-      .replace(/[_-]*\d{4}-\d{2}.*$/i, '')
-      .replace(/[_-]+/g, ' ')
-      .trim();
-    if (fromFile.length >= 3 && !/^(document|scan|bill|invoice)$/i.test(fromFile)) {
-      employeeName = fromFile.replace(/\b\w/g, (c) => c.toUpperCase());
-    }
-  }
-
-  const periodMatch =
-    text.match(/(?:period|month|for)\s*[:\-]?\s*((?:20\d{2}[-/]\d{1,2})|(?:[A-Za-z]+[\s,-]*20\d{2}))/i) ||
-    (fileName || '').match(/(20\d{2}-\d{2})/);
-  const salaryPeriod = periodMatch?.[1]?.trim() || undefined;
+  const payslipFields = looksLikePayslip ? extractPayslipFields(text, fileName) : null;
+  const employeeName = payslipFields?.employeeName || null;
+  const salaryPeriod = payslipFields?.period || undefined;
 
   if (lower.includes('credit note')) {
     documentType = 'credit_note';
@@ -564,19 +634,16 @@ export function parseFinancialTextWithHeuristics(rawText: string, fileName?: str
     documentType = 'salary_slip';
     suggestedCategory = 'Salary';
     suggestedType = 'expense';
-    // Prefer net salary amount already collected in totalMatches; also scan whole text
-    const netHit = text.match(
-      /(?:net\s*salary(?:\s*payable)?|net\s*pay|take\s*home)[:\s]*(?:inr)?\s*(?:₹|rs\.?)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i
-    );
-    if (netHit?.[1]) {
-      const netVal = cleanAmount(netHit[1]);
-      if (netVal != null) {
-        grandTotal = netVal;
-        amountPaid = netVal;
-      }
+    if (payslipFields?.net != null) {
+      grandTotal = payslipFields.net;
+      amountPaid = payslipFields.net;
+    } else if (grandTotal != null && grandTotal < 100) {
+      // Drop date-day false positives (e.g. PAID + "22 Oct")
+      grandTotal = null;
+      amountPaid = null;
     }
     if (employeeName) {
-      vendorName = employeeName; // payee / employee
+      vendorName = employeeName;
     }
   } else if (lower.includes('receipt') || lower.includes('payment receipt')) {
     documentType = 'receipt';
@@ -735,44 +802,27 @@ export function normalizePayslipExtraction(
 
   if (!isPayslip) return extracted;
 
-  const text = rawText || '';
-  let employeeName =
-    extracted.partyDetails?.vendorName ||
-    (extracted as any).employeeName ||
-    undefined;
-  const empMatch = text.match(
-    /(?:employee\s*name|emp(?:loyee)?\s*name)\s*[:\-]?\s*([A-Za-z][A-Za-z .']{2,60})/i
-  );
-  if (empMatch?.[1]) employeeName = empMatch[1].replace(/\s+/g, ' ').trim();
-  if (!employeeName && fileName) {
-    const fromFile = fileName
-      .replace(/\.[^.]+$/, '')
-      .replace(/^(payslip|salary[_-]?slip|salary)[_-]*/i, '')
-      .replace(/[_-]*\d{4}-\d{2}.*$/i, '')
-      .replace(/[_-]+/g, ' ')
-      .trim();
-    if (fromFile.length >= 3) {
-      employeeName = fromFile.replace(/\b\w/g, (c) => c.toUpperCase());
-    }
-  }
-
-  const periodMatch =
-    text.match(/(?:period|month)\s*[:\-]?\s*((?:20\d{2}[-/]\d{1,2})|(?:[A-Za-z]+[\s,-]*20\d{2}))/i) ||
-    (fileName || '').match(/(20\d{2}-\d{2})/);
-  const period = periodMatch?.[1]?.trim();
-
-  let net =
+  const fields = extractPayslipFields(rawText || '', fileName);
+  // Prefer dedicated extractor; ignore tiny false positives from status+date ("PAID 22 Oct")
+  const existingNet =
     extracted.financialDetails?.grandTotal ||
     extracted.financialDetails?.amountPaid ||
     (extracted as any).grandTotal ||
     0;
-  const netMatch = text.match(
-    /(?:net\s*salary(?:\s*payable)?|net\s*pay|take\s*home)[:\s]*(?:inr)?\s*(?:₹|rs\.?)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i
-  );
-  if (netMatch?.[1]) {
-    const n = parseFloat(netMatch[1].replace(/,/g, ''));
-    if (!isNaN(n) && n > 0) net = n;
+  const net =
+    fields.net ??
+    (typeof existingNet === 'number' && existingNet >= 100 ? existingNet : null) ??
+    0;
+
+  let employeeName = fields.employeeName || undefined;
+  const badName = !employeeName || /^(employee(\s*id)?|star\s*media|—|-)$/i.test(employeeName);
+  if (badName) {
+    const vendor = extracted.partyDetails?.vendorName;
+    if (vendor && !/^(employee(\s*id)?|star\s*media)$/i.test(vendor)) {
+      employeeName = vendor;
+    }
   }
+  const period = fields.period || undefined;
 
   const description = `Salary payout${employeeName ? ` — ${employeeName}` : ''}${period ? ` (${period})` : ''}`;
 

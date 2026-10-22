@@ -543,10 +543,14 @@ router.get(
     doc.rect(40, y, 515, 55).fill('#ecfdf5');
     doc.rect(40, y, 515, 55).strokeColor('#10b981').lineWidth(1.5).stroke();
 
-    doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(11);
-    doc.text('NET SALARY PAYABLE:', 60, y + 20);
-    doc.fontSize(16).fillColor('#047857');
-    doc.text(`INR ₹ ${payroll.net.toLocaleString('en-IN')}`, 320, y + 17);
+    // Keep label + amount as one text run so pdf-parse / OCR picks net correctly
+    doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(12);
+    doc.text(
+      `NET SALARY PAYABLE: INR ₹ ${payroll.net.toLocaleString('en-IN')}`,
+      60,
+      y + 20,
+      { width: 480, align: 'left' }
+    );
 
     // Footer & Signatures
     const footerTop = 480;

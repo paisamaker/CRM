@@ -224,5 +224,33 @@ describe('Document Scanner & AI Extraction Engine', () => {
       expect(normalized.transactionDetails.suggestedCategory).toBe('Salary');
       expect(normalized.partyDetails.vendorName?.toLowerCase()).toContain('sahil');
     });
+
+    it('should not treat payslip PAID status + payment day as the amount', () => {
+      // Mimics PDFKit column extraction: labels/values split across lines
+      const pdfKitText = `
+        STAR MEDIA
+        MONTHLY SALARY SLIP & EARNINGS STATEMENT
+        Period: 2026-10
+        Employee Name: Employee ID:
+        sahil bhagat SNC033
+        Payment Status: Payment Date:
+        PAID 22 Oct 2026
+        Basic Salary
+        ₹ 15,000
+        NET SALARY PAYABLE:
+        INR ₹ 15,000
+      `;
+
+      const result = parseFinancialTextWithHeuristics(
+        pdfKitText,
+        'Payslip_sahil_bhagat_2026-10.pdf'
+      );
+
+      expect(result.documentType).toBe('salary_slip');
+      expect(result.transactionDetails.suggestedCategory).toBe('Salary');
+      expect(result.financialDetails.grandTotal).toBe(15000);
+      expect(result.financialDetails.grandTotal).not.toBe(22);
+      expect(result.partyDetails.vendorName?.toLowerCase()).toContain('sahil');
+    });
   });
 });
