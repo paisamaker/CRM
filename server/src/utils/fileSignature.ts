@@ -6,6 +6,7 @@ const SIGNATURES: Array<{ mime: string; bytes: number[]; offset?: number }> = [
   { mime: 'image/jpeg', bytes: [0xff, 0xd8, 0xff] },
   { mime: 'image/png', bytes: [0x89, 0x50, 0x4e, 0x47] },
   { mime: 'image/webp', bytes: [0x52, 0x49, 0x46, 0x46], offset: 0 }, // RIFF....WEBP
+  { mime: 'image/gif', bytes: [0x47, 0x49, 0x46, 0x38] }, // GIF8
   { mime: 'application/pdf', bytes: [0x25, 0x50, 0x44, 0x46] }, // %PDF
 ];
 
@@ -49,12 +50,24 @@ export function assertSafeUploadSignature(filePath: string, claimedMime?: string
 
     const softAllowed = new Set([
       'text/csv',
+      'text/plain',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/msword',
+      'application/vnd.ms-excel',
+      'video/mp4',
+      'video/webm',
+      'audio/webm',
+      'audio/mpeg',
+      'audio/ogg',
+      'audio/wav',
+      'audio/mp4',
+      'image/gif',
     ]);
     if (claimedMime && softAllowed.has(claimedMime)) {
-      // DOCX is a ZIP (PK)
+      // OOXML office docs are ZIP (PK)
       if (
-        claimedMime.includes('wordprocessingml') &&
+        (claimedMime.includes('wordprocessingml') || claimedMime.includes('spreadsheetml')) &&
         !bufferMatches(header, [0x50, 0x4b])
       ) {
         throw new AppError('File content does not match claimed type', 400, 'INVALID_FILE_TYPE');

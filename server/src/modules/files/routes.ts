@@ -7,6 +7,8 @@ import { authenticate, authorize } from '../../middleware/auth.js';
 import { upload, publicUploadPath, finalizeUploadedFile } from '../../middleware/upload.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { DocumentFile } from '../../models/Document.js';
+import { ChatMessage } from '../../models/ChatMessage.js';
+import { Conversation } from '../../models/Conversation.js';
 import { paginate } from '../../utils/pagination.js';
 import { ForbiddenError, NotFoundError } from '../../utils/AppError.js';
 import { writeAudit } from '../../utils/audit.js';
@@ -14,6 +16,7 @@ import { writeAudit } from '../../utils/audit.js';
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadRoot = path.resolve(__dirname, '../../../uploads');
+const chatUploadRoot = path.join(uploadRoot, 'chat');
 
 router.use(authenticate);
 
@@ -140,6 +143,55 @@ router.delete(
     });
 
     res.json({ success: true, data: { ok: true } });
+  })
+);
+
+/**
+ * Chat attachment download — membership-gated (chat:read), not files:read.
+ * Looks up the attachment via ChatMessage so guessing filenames is not enough.
+ */
+router.get(
+  '/chat/:filename',
+  authorize('chat', 'read'),
+  asyncHandler(async (req, res) => {
+    const filename = path.basename(
+      Array.isArray(req.params.filename) ? req.params.filename[0] : req.params.filename
+    );
+    const needle = `/api/v1/files/chat/${filename}`;
+    const message = await ChatMessage.findOne({
+      'attachments.url': { $regex: filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$' },
+      deletedForEveryoneAt: { $exists: false },
+    })
+      .select('conversation attachments')
+      .lean();
+
+    if (!message) throw new NotFoundError('File not found');
+
+    const conversation = await Conversation.findById(message.conversation).select('members');
+    if (!conversation || !conversation.members.some((m) => String(m) === req.user!.id)) {
+      throw new ForbiddenError('Not a member of this conversation');
+    }
+
+    const attachment = (message.attachments || []).find(
+      (a) => a.url === needle || a.url.endsWith(`/${filename}`) || a.url.includes(filename)
+    );
+    if (!attachment) throw new NotFoundError('File not found');
+
+    if (attachment.url.startsWith('http://') || attachment.url.startsWith('https://')) {
+      if (req.query.download === '1' || req.query.download === 'true') {
+        res.setHeader('Content-Disposition', `attachment; filename="${attachment.name || filename}"`);
+      }
+      res.redirect(attachment.url);
+      return;
+    }
+
+    const full = path.join(chatUploadRoot, filename);
+    if (!fs.existsSync(full)) throw new NotFoundError('File not found');
+    if (req.query.download === '1' || req.query.download === 'true') {
+      res.download(full, attachment.name || filename);
+      return;
+    }
+    res.sendFile(full);
   })
 );
 

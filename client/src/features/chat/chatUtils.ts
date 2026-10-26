@@ -1,3 +1,41 @@
+import { useAuthStore } from '@/stores/auth';
+
+/** Resolve chat attachment URLs; append access token for same-origin authenticated media. */
+export function resolveChatMediaUrl(url?: string): string {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
+    return url;
+  }
+  const token = useAuthStore.getState().accessToken;
+  const base = import.meta.env.VITE_API_URL || '';
+  const absolute = url.startsWith('/') ? `${base.replace(/\/$/, '')}${url}` : url;
+  if (!token) return absolute;
+  const sep = absolute.includes('?') ? '&' : '?';
+  return `${absolute}${sep}token=${encodeURIComponent(token)}`;
+}
+
+export function formatFileSize(bytes?: number): string {
+  if (!bytes || bytes < 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function linkifyText(text: string): Array<{ type: 'text' | 'link'; value: string }> {
+  const parts: Array<{ type: 'text' | 'link'; value: string }> = [];
+  const re = /(https?:\/\/[^\s<]+[^\s<.,;:!?"')\]])/gi;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) parts.push({ type: 'text', value: text.slice(last, match.index) });
+    parts.push({ type: 'link', value: match[0] });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push({ type: 'text', value: text.slice(last) });
+  if (!parts.length) parts.push({ type: 'text', value: text });
+  return parts;
+}
+
 /**
  * Formats a message timestamp into a clean, human-readable time (e.g., "10:45 AM")
  */

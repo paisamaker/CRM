@@ -153,13 +153,11 @@ describe('Chat', () => {
     expect(history.body.data).toHaveLength(1);
 
     const ceoToken = await login('ceo@starmediainfluencer.com');
-    // CEO not a member of this direct chat
     const denied = await request(app)
       .get(`/api/v1/chat/conversations/${conversationId}/messages`)
       .set('Authorization', `Bearer ${ceoToken}`);
     expect(denied.status).toBe(403);
 
-    // ensure CEO can create their own chat with employee
     const ceoConv = await request(app)
       .post('/api/v1/chat/conversations/direct')
       .set('Authorization', `Bearer ${ceoToken}`)
@@ -167,5 +165,83 @@ describe('Chat', () => {
     expect(ceoConv.status).toBe(201);
     expect(String(ceoConv.body.data._id)).not.toBe(String(conversationId));
     expect(ceo).toBeTruthy();
+  });
+
+  it('supports groups, reactions, delete-for-me, prefs, and unauthenticated reject', async () => {
+    const empToken = await login('employee@starmediainfluencer.com');
+    const otherToken = await login('other@starmediainfluencer.com');
+    const other = await User.findOne({ email: 'other@starmediainfluencer.com' });
+    const ceo = await User.findOne({ email: 'ceo@starmediainfluencer.com' });
+
+    const unauth = await request(app).get('/api/v1/chat/conversations');
+    expect(unauth.status).toBe(401);
+
+    const groupRes = await request(app)
+      .post('/api/v1/chat/conversations/group')
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({ name: 'Design Ops', memberIds: [String(other!._id), String(ceo!._id)] });
+    expect(groupRes.status).toBe(201);
+    const groupId = groupRes.body.data._id;
+
+    const msg = await request(app)
+      .post(`/api/v1/chat/conversations/${groupId}/messages`)
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({ body: 'Welcome all', clientId: 'g1' });
+    expect(msg.status).toBe(201);
+    const messageId = msg.body.data._id;
+
+    const react = await request(app)
+      .post(`/api/v1/chat/messages/${messageId}/react`)
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({ emoji: '👍' });
+    expect(react.status).toBe(200);
+    expect(react.body.data.reactions?.[0]?.emoji).toBe('👍');
+
+    const delMe = await request(app)
+      .post(`/api/v1/chat/messages/${messageId}/delete`)
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({ scope: 'me' });
+    expect(delMe.status).toBe(200);
+
+    const otherHistory = await request(app)
+      .get(`/api/v1/chat/conversations/${groupId}/messages`)
+      .set('Authorization', `Bearer ${otherToken}`);
+    expect(otherHistory.status).toBe(200);
+    expect(otherHistory.body.data.find((m: { _id: string }) => m._id === messageId)).toBeFalsy();
+
+    const empHistory = await request(app)
+      .get(`/api/v1/chat/conversations/${groupId}/messages`)
+      .set('Authorization', `Bearer ${empToken}`);
+    expect(empHistory.body.data.find((m: { _id: string }) => m._id === messageId)).toBeTruthy();
+
+    const prefs = await request(app)
+      .patch(`/api/v1/chat/conversations/${groupId}/prefs`)
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({ pinned: true, muted: true });
+    expect(prefs.status).toBe(200);
+    expect(prefs.body.data.pinned).toBe(true);
+
+    const delEveryone = await request(app)
+      .post(`/api/v1/chat/messages/${messageId}/delete`)
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({ scope: 'everyone' });
+    expect(delEveryone.status).toBe(200);
+
+    const afterDelete = await request(app)
+      .get(`/api/v1/chat/conversations/${groupId}/messages`)
+      .set('Authorization', `Bearer ${empToken}`);
+    const tomb = afterDelete.body.data.find((m: { _id: string }) => m._id === messageId);
+    expect(tomb?.deletedForEveryone || tomb?.tombstone).toBeTruthy();
+
+    const leave = await request(app)
+      .patch(`/api/v1/chat/conversations/${groupId}/members`)
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({ leave: true });
+    expect(leave.status).toBe(200);
+
+    const blocked = await request(app)
+      .get(`/api/v1/chat/conversations/${groupId}/messages`)
+      .set('Authorization', `Bearer ${otherToken}`);
+    expect(blocked.status).toBe(403);
   });
 });

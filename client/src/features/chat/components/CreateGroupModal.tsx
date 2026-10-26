@@ -9,7 +9,7 @@ interface CreateGroupModalProps {
   open: boolean;
   onClose: () => void;
   colleagues: Colleague[];
-  onCreate: (name: string, memberIds: string[]) => void;
+  onCreate: (name: string, memberIds: string[], description?: string) => void;
   isPending: boolean;
 }
 
@@ -21,6 +21,7 @@ export function CreateGroupModal({
   isPending,
 }: CreateGroupModalProps) {
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
@@ -58,11 +59,12 @@ export function CreateGroupModal({
       return;
     }
     setError('');
-    onCreate(name.trim(), selectedIds);
+    onCreate(name.trim(), selectedIds, description.trim() || undefined);
   };
 
   const handleClose = () => {
     setName('');
+    setDescription('');
     setSelectedIds([]);
     setSearch('');
     setError('');
@@ -106,7 +108,6 @@ export function CreateGroupModal({
           </div>
         )}
 
-        {/* Group Name */}
         <div>
           <label className="block text-xs font-semibold text-slate-700">
             Group Name <span className="text-red-500">*</span>
@@ -123,6 +124,17 @@ export function CreateGroupModal({
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-[#0D9488] focus:outline-none focus:ring-1 focus:ring-[#0D9488]"
             />
           </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-700">Description</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value.slice(0, 500))}
+            rows={2}
+            placeholder="Optional — what is this group for?"
+            className="mt-1 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-[#0D9488] focus:outline-none focus:ring-1 focus:ring-[#0D9488]"
+          />
         </div>
 
         {/* Selected Members Chips */}

@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/Button';
 import { Input, Label } from '@/components/ui/Input';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { Badge } from '@/components/ui/Badge';
+import { AvatarCropperModal } from '@/components/ui/AvatarCropperModal';
 import { useAuthStore } from '@/stores/auth';
 import { cn } from '@/lib/utils';
 
@@ -48,6 +49,8 @@ export function SettingsPage() {
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar || '');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [cropperOpen, setCropperOpen] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [customImageUrl, setCustomImageUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,8 +114,8 @@ export function SettingsPage() {
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
-  // Handle Avatar Image File Upload (Uploads to Cloudinary on backend)
-  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Avatar Image File Selection (opens interactive cropper before upload)
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -126,14 +129,17 @@ export function SettingsPage() {
       return;
     }
 
-    // Local instant preview
-    const previewUrl = URL.createObjectURL(file);
-    setAvatarPreview(previewUrl);
-    setIsUploadingAvatar(true);
+    setCropFile(file);
+    setCropperOpen(true);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
+  // Upload cropped avatar file to Cloudinary
+  const handleCroppedAvatarUpload = async (croppedFile: File) => {
+    setIsUploadingAvatar(true);
     try {
       const formData = new FormData();
-      formData.append('avatar', file);
+      formData.append('avatar', croppedFile);
 
       const res = await api.post('/auth/profile/avatar', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -143,13 +149,15 @@ export function SettingsPage() {
       setAvatarUrl(uploadedUrl);
       setAvatarPreview(null);
       updateUser({ avatar: uploadedUrl });
-      toast.success('Profile photo uploaded and processed via Cloudinary!');
+      qc.invalidateQueries({ queryKey: ['my-profile'] });
+      qc.invalidateQueries({ queryKey: ['settings'] });
+      toast.success('Profile photo cropped & updated successfully!');
+      setCropperOpen(false);
+      setCropFile(null);
     } catch (err) {
-      setAvatarPreview(null);
       toast.error(getErrorMessage(err));
     } finally {
       setIsUploadingAvatar(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -710,6 +718,18 @@ export function SettingsPage() {
           </Card>
         </div>
       )}
+
+      {/* Profile Photo Cropper & Position Adjuster Modal */}
+      <AvatarCropperModal
+        open={cropperOpen}
+        imageFile={cropFile}
+        onClose={() => {
+          setCropperOpen(false);
+          setCropFile(null);
+        }}
+        onCropComplete={handleCroppedAvatarUpload}
+        isUploading={isUploadingAvatar}
+      />
     </div>
   );
 }

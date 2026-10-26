@@ -63,12 +63,20 @@ export function AppShell() {
     Object.entries(titles).find(([k]) => location.pathname.startsWith(k) && k !== '/')?.[1] ||
     'STAR MEDIA CRM';
 
+  const isChatRoute = location.pathname.startsWith('/chat');
+
   return (
     <div className="min-h-screen bg-[var(--bg)]">
       <Sidebar />
-      <div className={cn('transition-[padding] duration-200', collapsed ? 'md:pl-[72px]' : 'md:pl-[240px]')}>
+      <div className={cn('transition-[padding] duration-200', collapsed ? 'md:pl-[72px]' : 'md:pl-[235px]')}>
         <Topbar title={title} breadcrumb="Workspace" />
-        <main className="mx-auto w-full max-w-[1440px] px-3 py-4 sm:px-4 sm:py-6 md:px-6 lg:px-8">
+        <main
+          className={cn(
+            isChatRoute
+              ? 'h-[calc(100vh-4rem)] w-full overflow-hidden p-0'
+              : 'mx-auto w-full max-w-[1440px] px-3 py-4 sm:px-4 sm:py-6 md:px-6 lg:px-8'
+          )}
+        >
           <Outlet />
         </main>
       </div>

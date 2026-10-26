@@ -271,7 +271,7 @@ export function AttendanceWidget({ compact = false }: { compact?: boolean }) {
 
   return (
     <>
-      <div className="rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-slate-50/30 to-white p-5 sm:p-6 shadow-xs transition-all">
+      <div className="h-full flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-slate-50/30 to-white p-5 sm:p-6 shadow-xs transition-all">
         {/* TOP ROW: Header, Status Badge & Toggle Switch */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-5">
           <div className="flex items-start gap-3">

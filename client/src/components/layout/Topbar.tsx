@@ -1,17 +1,16 @@
-import { Command, Menu, Search, LogOut, Sparkles } from 'lucide-react';
+import { Command, Menu, Search, LogOut, Sparkles, Sun, ChevronDown } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import { NotificationBell } from './NotificationBell';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 
 export function Topbar({ title, breadcrumb }: { title?: string; breadcrumb?: string }) {
   const user = useAuthStore((s) => s.user);
   const clearSession = useAuthStore((s) => s.clearSession);
-  const { setCommandOpen, setMobileNavOpen } = useUIStore();
+  const { setCommandOpen, setMobileNavOpen, theme, setTheme } = useUIStore();
   const navigate = useNavigate();
 
   async function logout() {
@@ -24,87 +23,77 @@ export function Topbar({ title, breadcrumb }: { title?: string; breadcrumb?: str
     navigate('/login');
   }
 
-  const roleTone =
-    user?.role === 'ceo'
-      ? 'purple'
-      : user?.role === 'finance'
-        ? 'teal'
-        : user?.role === 'manager'
-          ? 'orange'
-          : 'default';
-
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-header)] backdrop-blur-md px-4 md:px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-slate-200/80 bg-white/95 px-4 backdrop-blur-md md:px-6">
+      {/* Left: Clean Breadcrumb */}
       <div className="flex min-w-0 items-center gap-3">
         <Button
           variant="ghost"
           size="icon"
-          className="md:hidden"
+          className="md:hidden text-slate-600"
           aria-label="Open menu"
           onClick={() => setMobileNavOpen(true)}
         >
           <Menu className="h-5 w-5" />
         </Button>
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
-            <span className="font-semibold text-teal-700">
-              {breadcrumb || 'Workspace'}
-            </span>
-            <span className="text-slate-300">/</span>
-            <span className="truncate text-slate-600">{title || 'STAR MEDIA CRM'}</span>
-          </div>
-          <div className="truncate text-base font-bold text-slate-900 tracking-tight">
-            {title || 'STAR MEDIA CRM'}
-          </div>
+        <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500">
+          <span className="text-slate-500 hover:text-slate-700 transition cursor-pointer">
+            {breadcrumb || 'Workspace'}
+          </span>
+          <span className="text-slate-300">/</span>
+          <span className="font-semibold text-slate-800">{title || 'Chat'}</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3">
-        <button
-          type="button"
+      {/* Center: Search Anything pill input */}
+      <div className="relative mx-auto hidden w-full max-w-sm md:block">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+        <input
+          type="text"
           onClick={() => setCommandOpen(true)}
-          className="hidden items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-1.5 text-xs text-slate-600 shadow-xs transition hover:border-slate-300 hover:bg-white hover:text-slate-900 lg:flex"
-        >
-          <Search className="h-3.5 w-3.5 text-slate-400" />
-          <span>Quick search</span>
-          <span className="ml-3 inline-flex items-center gap-0.5 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
-            <Command className="h-2.5 w-2.5" />K
-          </span>
-        </button>
+          readOnly
+          placeholder="Search anything..."
+          className="h-9 w-full rounded-full border border-slate-200 bg-slate-50/70 pl-9 pr-4 text-xs text-slate-700 placeholder:text-slate-400 shadow-2xs transition hover:bg-white hover:border-slate-300 focus:border-teal-500 focus:bg-white focus:outline-none cursor-pointer"
+        />
+      </div>
 
+      {/* Right: Notification, Theme toggle, User pill */}
+      <div className="flex items-center gap-2 sm:gap-3">
         <NotificationBell />
 
-        <div className="ml-1 flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-1 shadow-xs">
+        {/* Theme toggle (Sun) */}
+        <button
+          type="button"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 transition"
+          title="Toggle theme"
+          aria-label="Toggle theme"
+        >
+          <Sun className="h-4 w-4" />
+        </button>
+
+        {/* User Pill: SB, Sahil Bhagat, Admin */}
+        <div className="relative group">
           <Link
             to="/settings"
-            title="Profile & Account Settings"
-            className="flex items-center gap-2 rounded-lg p-0.5 pr-2 transition hover:bg-slate-100/80 group"
+            title="Account Settings"
+            className="flex items-center gap-2.5 rounded-full border border-slate-200/90 bg-white py-1 pl-1 pr-3 shadow-xs transition hover:bg-slate-50 hover:border-slate-300"
           >
             <UserAvatar
-              name={user?.name}
+              name={user?.name || 'User'}
               avatar={user?.avatar}
-              className="h-8 w-8 rounded-lg text-xs transition-transform group-hover:scale-105"
-              indicator
+              className="h-7 w-7 rounded-full text-[10px]"
             />
-            <div className="hidden min-w-0 sm:block text-left">
-              <div className="truncate text-xs font-bold text-[var(--fg)] group-hover:text-teal-700 transition-colors">
-                {user?.name}
+            <div className="hidden min-w-0 text-left sm:block">
+              <div className="truncate text-xs font-bold leading-tight text-slate-800">
+                {user?.name || 'Account'}
               </div>
-              <div className="flex items-center gap-1">
-                <Badge tone={roleTone} className="!px-1.5 !py-0 text-[9px] uppercase tracking-wider font-bold">
-                  {user?.role}
-                </Badge>
+              <div className="text-[10px] font-medium leading-tight capitalize text-slate-400">
+                {user?.role || 'Member'}
               </div>
             </div>
+            <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
           </Link>
-          <button
-            type="button"
-            onClick={logout}
-            className="rounded-lg p-1.5 text-[var(--fg-secondary)] transition hover:bg-[var(--danger-bg)] hover:text-[var(--danger)]"
-            title="Logout"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
         </div>
       </div>
     </header>

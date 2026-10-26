@@ -1,0 +1,147 @@
+/* WhatsApp-inspired Chat UI */
+.sm-chat {
+  --chat-ink: #111b21;
+  --chat-muted: #667781;
+  --chat-line: #e9edef;
+  --chat-soft: #f0f2f5;
+  --chat-panel: #ffffff;
+  --chat-accent: #00a884;
+  --chat-accent-deep: #008069;
+  --chat-accent-soft: #d9fdd3;
+  --chat-bubble-out: #d9fdd3;
+  --chat-bubble-out-text: #111b21;
+  --chat-bubble-in: #ffffff;
+  --chat-bubble-in-text: #111b21;
+  --chat-read: #53bdeb;
+  --chat-delivered: #8696a0;
+  --chat-row-active: #f0f2f5;
+  --chat-composer-bg: #f0f2f5;
+  --chat-wallpaper-bg: #efeae2;
+}
+
+.sm-chat-shell {
+  background: var(--chat-panel);
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+}
+
+/* WhatsApp Iconic Wallpaper with Subtle Doodle Texture */
+.sm-chat-messages {
+  background-color: var(--chat-wallpaper-bg);
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(209, 199, 183, 0.45) 1.5px, transparent 1.5px),
+    radial-gradient(circle at 0% 100%, rgba(209, 199, 183, 0.35) 1.5px, transparent 1.5px),
+    radial-gradient(circle at 100% 0%, rgba(209, 199, 183, 0.35) 1.5px, transparent 1.5px);
+  background-size: 40px 40px, 60px 60px, 60px 60px;
+  background-position: 0 0, 20px 20px, 30px 30px;
+}
+
+/* WhatsApp Message Bubble Outgoing (Green) */
+.sm-chat-bubble-out {
+  background-color: var(--chat-bubble-out);
+  color: var(--chat-bubble-out-text);
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  position: relative;
+}
+
+/* WhatsApp Message Bubble Incoming (White) */
+.sm-chat-bubble-in {
+  background-color: var(--chat-bubble-in);
+  color: var(--chat-bubble-in-text);
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  position: relative;
+}
+
+/* WhatsApp Tail Outgoing */
+.sm-chat-tail-out::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -8px;
+  width: 8px;
+  height: 13px;
+  background: radial-gradient(circle at top left, transparent 8px, var(--chat-bubble-out) 8.5px);
+}
+
+/* WhatsApp Tail Incoming */
+.sm-chat-tail-in::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -8px;
+  width: 8px;
+  height: 13px;
+  background: radial-gradient(circle at top right, transparent 8px, var(--chat-bubble-in) 8.5px);
+}
+
+/* WhatsApp Composer Bar */
+.sm-chat-composer {
+  background: var(--chat-composer-bg);
+  border-top: 1px solid var(--chat-line);
+}
+
+.sm-chat-composer-input {
+  background: #ffffff;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.08);
+}
+
+.sm-chat-composer-input:focus-within {
+  box-shadow: 0 1px 2px rgba(11, 20, 26, 0.12);
+}
+
+.sm-chat-send {
+  background: var(--chat-accent);
+  color: #fff;
+  transition: all 120ms ease;
+}
+
+.sm-chat-send:hover:not(:disabled) {
+  background: var(--chat-accent-deep);
+  transform: scale(1.04);
+}
+
+.sm-chat-send:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.sm-chat-send:disabled {
+  background: #00a884;
+  opacity: 0.65;
+}
+
+/* WhatsApp Date Separator Badge */
+.sm-chat-date-pill {
+  background: rgba(255, 255, 255, 0.92);
+  color: #54656f;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  border: 1px solid rgba(11, 20, 26, 0.05);
+  backdrop-filter: blur(4px);
+}
+
+/* Drawer animations */
+.sm-chat-drawer-backdrop {
+  animation: sm-chat-fade 160ms ease;
+}
+
+.sm-chat-drawer-panel {
+  animation: sm-chat-slide 180ms ease;
+}
+
+@keyframes sm-chat-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sm-chat-slide {
+  from { transform: translateX(16px); opacity: 0.9; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sm-chat-drawer-backdrop,
+  .sm-chat-drawer-panel {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -1190,15 +1190,28 @@ function EmployeeDashboard() {
         </div>
       </div>
 
-      {/* Profile & Photo Settings Strip */}
-      <ProfileSection />
-
-      {/* Personal Attendance Check-In Widget & Activity Heatmap */}
+      {/* 2-Column Row: Left = Daily Shift Attendance, Right = Company ID Card Profile */}
       {showPersonalAttendance(role) ? (
-        <div className="space-y-5">
-          <AttendanceWidget />
-          <PersonalActivityHeatmap />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+          {/* Left Side: Daily Shift Attendance Check-In */}
+          <div className="lg:col-span-7 xl:col-span-7 flex flex-col">
+            <AttendanceWidget />
+          </div>
+
+          {/* Right Side: Company ID Card Style Profile */}
+          <div className="lg:col-span-5 xl:col-span-5 flex flex-col">
+            <ProfileSection />
+          </div>
         </div>
+      ) : (
+        <div className="max-w-md">
+          <ProfileSection />
+        </div>
+      )}
+
+      {/* Personal Attendance Activity Heatmap */}
+      {showPersonalAttendance(role) ? (
+        <PersonalActivityHeatmap />
       ) : null}
 
       {/* KPI Cards Row */}

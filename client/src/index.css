@@ -23,7 +23,12 @@
   --bg-subtle: #f1f3f5;
   --bg-elevated: #ffffff;
   --bg-sidebar: #ffffff;
-  --bg-header: rgba(255, 255, 255, 0.92);
+  --sidebar-border: #e2e8f0;
+  --sidebar-fg: #475569;
+  --sidebar-fg-hover: #0f172a;
+  --sidebar-bg-hover: #f1f5f9;
+  --sidebar-active: #00a884;
+  --bg-header: rgba(255, 255, 255, 0.96);
   --bg-table-header: #f7f8fa;
   --fg: #171923;
   --fg-secondary: #4b5563;
