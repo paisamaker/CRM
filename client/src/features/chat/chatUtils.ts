@@ -7,8 +7,26 @@ export function resolveChatMediaUrl(url?: string): string {
     return url;
   }
   const token = useAuthStore.getState().accessToken;
-  const base = import.meta.env.VITE_API_URL || '';
-  const absolute = url.startsWith('/') ? `${base.replace(/\/$/, '')}${url}` : url;
+  const rawApiBase = import.meta.env.VITE_API_URL?.trim() || '';
+
+  let origin = '';
+  if (rawApiBase.startsWith('http://') || rawApiBase.startsWith('https://')) {
+    try {
+      const u = new URL(rawApiBase);
+      origin = u.origin;
+    } catch {
+      origin = rawApiBase.replace(/\/api(\/v1)?\/?$/, '');
+    }
+  }
+
+  // Ensure clean path
+  let path = url.startsWith('/') ? url : `/${url}`;
+  // If the path does not have /api/v1 or /api prefix, prepend /api/v1
+  if (!path.startsWith('/api/v1') && !path.startsWith('/api/')) {
+    path = `/api/v1${path}`;
+  }
+
+  const absolute = origin ? `${origin}${path}` : path;
   if (!token) return absolute;
   const sep = absolute.includes('?') ? '&' : '?';
   return `${absolute}${sep}token=${encodeURIComponent(token)}`;

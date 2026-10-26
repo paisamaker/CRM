@@ -12,6 +12,7 @@ import {
   SmilePlus,
   Play,
   Pause,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UserAvatar } from '@/components/ui/UserAvatar';
@@ -276,7 +277,7 @@ export function MessageBubble({
                       <button
                         key={att.url}
                         type="button"
-                        className="mb-1 block max-w-full overflow-hidden rounded-md cursor-pointer transition hover:opacity-95"
+                        className="mb-1 block max-w-full overflow-hidden rounded-md cursor-pointer transition hover:opacity-95 text-left"
                         onClick={() => onPreviewImage?.(src, att.name)}
                       >
                         <img
@@ -284,7 +285,21 @@ export function MessageBubble({
                           alt={att.name}
                           loading="lazy"
                           className="max-h-72 max-w-full rounded-md object-cover"
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            target.style.display = 'none';
+                            const fallback = target.nextElementSibling as HTMLElement | null;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
                         />
+                        <div
+                          style={{ display: 'none' }}
+                          className="flex items-center gap-2 rounded-lg bg-black/5 p-2 text-xs text-slate-700"
+                        >
+                          <ImageIcon className="h-4 w-4 text-teal-600 shrink-0" />
+                          <span className="truncate flex-1 font-medium">{att.name}</span>
+                          <span className="text-[10px] text-slate-400">Click to view</span>
+                        </div>
                       </button>
                     );
                   }
