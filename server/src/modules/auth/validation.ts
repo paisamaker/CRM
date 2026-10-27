@@ -27,6 +27,8 @@ export const inviteSchema = z.object({
   joiningDate: z.coerce.date().optional(),
   manager: z.string().optional(),
   employeeId: z.string().max(40).optional(),
+  /** If set, account is activated immediately with this login password (no invite link). */
+  password: z.string().min(6).max(128).optional(),
 });
 
 export const forgotSchema = z.object({

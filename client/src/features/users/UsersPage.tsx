@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '@/lib/api';
@@ -9,7 +9,7 @@ import { Badge, statusTone } from '@/components/ui/Badge';
 import { Input, Label, Select } from '@/components/ui/Input';
 import { useAuthStore } from '@/stores/auth';
 import { formatDate, cn } from '@/lib/utils';
-import { Users, User } from 'lucide-react';
+import { Users, User, Eye, EyeOff, KeyRound, Link2, RefreshCw, Check } from 'lucide-react';
 import { WorkingTeamsList } from '@/features/teams/components/WorkingTeamsList';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { EmployeeProfileDrawer } from '@/features/attendance/components/EmployeeProfileDrawer';
@@ -27,6 +27,8 @@ type UserRow = {
   joiningDate?: string;
 };
 
+type AccessMode = 'password' | 'invite';
+
 const emptyForm = {
   email: '',
   role: 'employee',
@@ -37,7 +39,39 @@ const emptyForm = {
   employeeId: '',
   joiningDate: '',
   manager: '',
+  password: '',
+  confirmPassword: '',
 };
+
+const COMPANY_EMAIL_DOMAIN = 'starmediainfluencer.com';
+
+/** "Sahil Bhagat" / "Sahilbhagat" → sahilbhagat@starmediainfluencer.com */
+function emailFromName(name: string) {
+  const local = name
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '')
+    .slice(0, 64);
+  if (!local) return '';
+  return `${local}@${COMPANY_EMAIL_DOMAIN}`;
+}
+
+function generateLoginPassword() {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const digits = '23456789';
+  const pick = (s: string) => s[Math.floor(Math.random() * s.length)];
+  let out = pick(upper);
+  for (let i = 0; i < 5; i++) out += pick(lower + digits);
+  out += pick(digits);
+  return out;
+}
+
+function passwordOk(password: string) {
+  return password.length >= 6 && /[A-Z]/.test(password);
+}
 
 export function UsersPage() {
   const role = useAuthStore((s) => s.user?.role);
@@ -47,6 +81,10 @@ export function UsersPage() {
   const [profileEmployeeId, setProfileEmployeeId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [accessMode, setAccessMode] = useState<AccessMode>('password');
+  const [showPassword, setShowPassword] = useState(false);
+  /** When false, email stays synced from full name */
+  const [emailManual, setEmailManual] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [edit, setEdit] = useState({
     phone: '',
@@ -75,22 +113,62 @@ export function UsersPage() {
   });
 
   const invite = useMutation({
-    mutationFn: async () =>
-      api.post('/auth/invite', {
-        ...form,
+    mutationFn: async () => {
+      if (accessMode === 'password') {
+        if (!passwordOk(form.password)) {
+          toast.error('Password must be at least 6 characters with one capital letter');
+          throw new Error('WEAK_PASSWORD');
+        }
+        if (form.password !== form.confirmPassword) {
+          toast.error('Passwords do not match');
+          throw new Error('PASSWORD_MISMATCH');
+        }
+      }
+      return api.post('/auth/invite', {
+        email: form.email.trim(),
+        role: form.role,
+        name: form.name.trim() || undefined,
+        department: form.department || undefined,
+        phone: form.phone.trim() || undefined,
+        designation: form.designation || undefined,
         joiningDate: form.joiningDate || undefined,
         manager: form.manager || undefined,
         employeeId: form.employeeId || undefined,
-      }),
+        ...(accessMode === 'password' ? { password: form.password } : {}),
+      });
+    },
     onSuccess: (res) => {
-      toast.success('Invite created');
-      if (res.data.data.inviteLink) toast.message(res.data.data.inviteLink);
+      const d = res.data.data;
       setOpen(false);
       setForm(emptyForm);
+      setAccessMode('password');
+      setShowPassword(false);
+      setEmailManual(false);
       qc.invalidateQueries({ queryKey: ['users'] });
+      if (d.loginPassword) {
+        toast.success('Employee created — can log in now');
+        setPasswordResult({
+          name: d.user?.name || form.name || 'Employee',
+          email: d.user?.email || form.email,
+          tempPassword: d.loginPassword,
+        });
+      } else {
+        toast.success('Invite created');
+        if (d.inviteLink) toast.message(d.inviteLink);
+      }
     },
-    onError: (e) => toast.error(getErrorMessage(e)),
+    onError: (e) => {
+      const msg = getErrorMessage(e);
+      if (msg === 'WEAK_PASSWORD' || msg === 'PASSWORD_MISMATCH') return;
+      toast.error(msg);
+    },
   });
+
+  const canSubmitInvite = useMemo(() => {
+    if (!form.name.trim() || !form.email.trim() || !form.email.includes('@')) return false;
+    if (accessMode === 'invite') return true;
+    return passwordOk(form.password) && form.password === form.confirmPassword;
+  }, [form.name, form.email, form.password, form.confirmPassword, accessMode]);
 
   const saveEdit = useMutation({
     mutationFn: async () => api.patch(`/users/${editId}`, edit),
@@ -393,64 +471,269 @@ export function UsersPage() {
 
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          if (invite.isPending) return;
+          setOpen(false);
+          setForm(emptyForm);
+          setAccessMode('password');
+          setShowPassword(false);
+          setEmailManual(false);
+        }}
         title="Add employee"
+        description="Create a teammate account with role, profile details, and login access."
         variant="dialog"
-        size="sm"
+        size="md"
         footer={
-          <Button onClick={() => invite.mutate()} disabled={!form.email}>
-            Add employee
-          </Button>
+          <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-[var(--fg-secondary)]">
+              {accessMode === 'password'
+                ? 'They can sign in immediately with the password you set.'
+                : 'They must open the invite link to choose a password.'}
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                disabled={invite.isPending}
+                onClick={() => {
+                  setOpen(false);
+                  setForm(emptyForm);
+                  setAccessMode('password');
+                  setShowPassword(false);
+                  setEmailManual(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => invite.mutate()}
+                disabled={!canSubmitInvite || invite.isPending}
+                className="bg-teal-600 hover:bg-teal-700 text-white min-w-[8.5rem]"
+              >
+                {invite.isPending ? 'Saving…' : accessMode === 'password' ? 'Create & enable login' : 'Send invite'}
+              </Button>
+            </div>
+          </div>
         }
       >
-        <div className="space-y-3">
-          <div>
-            <Label>Email</Label>
-            <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@starmediainfluencer.com" />
+        <div className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Label>Full name *</Label>
+              <Input
+                value={form.name}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setForm((f) => ({
+                    ...f,
+                    name,
+                    email: emailManual ? f.email : emailFromName(name),
+                  }));
+                }}
+                placeholder="e.g. Sahil Bhagat"
+                autoComplete="off"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <Label>Work email *</Label>
+                {!emailManual && form.email ? (
+                  <span className="text-[11px] font-medium text-teal-700">Auto from name</span>
+                ) : null}
+              </div>
+              <Input
+                value={form.email}
+                onChange={(e) => {
+                  setEmailManual(true);
+                  setForm({ ...form, email: e.target.value.trim().toLowerCase() });
+                }}
+                placeholder={`name@${COMPANY_EMAIL_DOMAIN}`}
+                autoComplete="off"
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                Login ID is created from the name (spaces removed). Edit only if you need a custom address.
+              </p>
+            </div>
+            <div>
+              <Label>Employee ID</Label>
+              <Input
+                value={form.employeeId}
+                onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
+                placeholder="Auto if empty"
+              />
+            </div>
+            <div>
+              <Label>Role</Label>
+              <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                {role === 'ceo' ? <option value="ceo">CEO</option> : null}
+                {role === 'ceo' ? <option value="manager">Manager</option> : null}
+                <option value="finance">Finance</option>
+                <option value="employee">Employee</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Department</Label>
+              <Input
+                value={form.department}
+                onChange={(e) => setForm({ ...form, department: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Designation</Label>
+              <Input
+                value={form.designation}
+                onChange={(e) => setForm({ ...form, designation: e.target.value })}
+                placeholder="e.g. Content Lead"
+              />
+            </div>
+            <div>
+              <Label>Phone</Label>
+              <Input
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                placeholder="+91 …"
+              />
+            </div>
+            <div>
+              <Label>Joining date</Label>
+              <Input
+                type="date"
+                value={form.joiningDate}
+                onChange={(e) => setForm({ ...form, joiningDate: e.target.value })}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Reporting manager</Label>
+              <Select value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })}>
+                <option value="">None</option>
+                {managers.map((m: { _id: string; name: string }) => (
+                  <option key={m._id} value={m._id}>
+                    {m.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
           </div>
-          <div>
-            <Label>Name</Label>
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </div>
-          <div>
-            <Label>Employee ID</Label>
-            <Input value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} placeholder="Auto if empty" />
-          </div>
-          <div>
-            <Label>Role</Label>
-            <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              {role === 'ceo' ? <option value="ceo">CEO</option> : null}
-              {role === 'ceo' ? <option value="manager">Manager</option> : null}
-              <option value="finance">Finance</option>
-              <option value="employee">Employee</option>
-            </Select>
-          </div>
-          <div>
-            <Label>Department</Label>
-            <Input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} />
-          </div>
-          <div>
-            <Label>Designation</Label>
-            <Input value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} />
-          </div>
-          <div>
-            <Label>Phone</Label>
-            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          </div>
-          <div>
-            <Label>Joining date</Label>
-            <Input type="date" value={form.joiningDate} onChange={(e) => setForm({ ...form, joiningDate: e.target.value })} />
-          </div>
-          <div>
-            <Label>Manager</Label>
-            <Select value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })}>
-              <option value="">None</option>
-              {managers.map((m: { _id: string; name: string }) => (
-                <option key={m._id} value={m._id}>
-                  {m.name}
-                </option>
-              ))}
-            </Select>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <KeyRound className="h-4 w-4 text-teal-600" />
+              Login access
+            </div>
+            <div className="grid grid-cols-2 gap-2 rounded-lg bg-white p-1 shadow-xs border border-slate-200/80">
+              <button
+                type="button"
+                onClick={() => setAccessMode('password')}
+                className={cn(
+                  'flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition',
+                  accessMode === 'password'
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-50'
+                )}
+              >
+                <KeyRound className="h-3.5 w-3.5" />
+                Set password
+              </button>
+              <button
+                type="button"
+                onClick={() => setAccessMode('invite')}
+                className={cn(
+                  'flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition',
+                  accessMode === 'invite'
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-50'
+                )}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Invite link
+              </button>
+            </div>
+
+            {accessMode === 'password' ? (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <Label>Password *</Label>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 hover:text-teal-800"
+                      onClick={() => {
+                        const next = generateLoginPassword();
+                        setForm((f) => ({ ...f, password: next, confirmPassword: next }));
+                        setShowPassword(true);
+                        toast.message('Password generated — copy it before closing');
+                      }}
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Generate
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      value={form.password}
+                      onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      placeholder="Min 6 chars, 1 capital letter"
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <Label>Confirm password *</Label>
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    value={form.confirmPassword}
+                    onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                    placeholder="Re-enter password"
+                  />
+                </div>
+                <ul className="space-y-1 text-[11px] text-slate-500">
+                  <li className="flex items-center gap-1.5">
+                    <Check
+                      className={cn(
+                        'h-3 w-3',
+                        form.password.length >= 6 ? 'text-teal-600' : 'text-slate-300'
+                      )}
+                    />
+                    At least 6 characters
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <Check
+                      className={cn(
+                        'h-3 w-3',
+                        /[A-Z]/.test(form.password) ? 'text-teal-600' : 'text-slate-300'
+                      )}
+                    />
+                    One capital letter
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <Check
+                      className={cn(
+                        'h-3 w-3',
+                        form.password && form.password === form.confirmPassword
+                          ? 'text-teal-600'
+                          : 'text-slate-300'
+                      )}
+                    />
+                    Passwords match
+                  </li>
+                </ul>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs leading-relaxed text-slate-600">
+                We’ll create an invited account and show an accept-invite link. The employee chooses their own
+                password when they open it (expires in 48 hours).
+              </p>
+            )}
           </div>
         </div>
       </Modal>
@@ -555,7 +838,7 @@ export function UsersPage() {
       <Modal
         open={!!passwordResult}
         onClose={() => setPasswordResult(null)}
-        title="Temporary password"
+        title="Login password ready"
         size="sm"
         footer={
           <>
@@ -564,14 +847,16 @@ export function UsersPage() {
               onClick={async () => {
                 if (!passwordResult) return;
                 try {
-                  await navigator.clipboard.writeText(passwordResult.tempPassword);
-                  toast.success('Copied to clipboard');
+                  await navigator.clipboard.writeText(
+                    `Email: ${passwordResult.email}\nPassword: ${passwordResult.tempPassword}`
+                  );
+                  toast.success('Email & password copied');
                 } catch {
                   toast.error('Could not copy');
                 }
               }}
             >
-              Copy password
+              Copy credentials
             </Button>
             <Button onClick={() => setPasswordResult(null)}>Done</Button>
           </>
@@ -581,11 +866,19 @@ export function UsersPage() {
           <>
             <p className="text-sm text-[var(--fg-secondary)]">
               Share this once with <span className="font-medium text-[var(--fg)]">{passwordResult.name}</span>. They can
-              log in with this password. It is not stored in plaintext after you close this dialog.
+              log in now. This password is not shown again after you close.
             </p>
-            <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3">
-              <div className="text-xs text-[var(--fg-secondary)]">{passwordResult.email}</div>
-              <div className="mt-1 font-mono text-sm font-semibold tracking-wide">{passwordResult.tempPassword}</div>
+            <div className="mt-4 space-y-2 rounded-xl border border-teal-200 bg-teal-50/50 p-3">
+              <div>
+                <div className="text-[11px] font-medium uppercase tracking-wide text-teal-800/70">Email</div>
+                <div className="text-sm font-medium text-slate-800">{passwordResult.email}</div>
+              </div>
+              <div>
+                <div className="text-[11px] font-medium uppercase tracking-wide text-teal-800/70">Password</div>
+                <div className="font-mono text-sm font-semibold tracking-wide text-slate-900">
+                  {passwordResult.tempPassword}
+                </div>
+              </div>
             </div>
           </>
         ) : null}

@@ -128,9 +128,8 @@ export default function App() {
                 <Route element={<ProtectedRoute resource="users" />}>
                   <Route path="/users" element={<UsersPage />} />
                 </Route>
-                <Route element={<ProtectedRoute resource="settings" />}>
-                  <Route path="/settings" element={<SettingsPage />} />
-                </Route>
+                {/* Profile settings available to every signed-in role; company tabs stay CEO-only in the page */}
+                <Route path="/settings" element={<SettingsPage />} />
                 <Route element={<ProtectedRoute resource="audit" />}>
                   <Route path="/audit" element={<AuditPage />} />
                 </Route>

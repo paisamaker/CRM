@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import { authenticate, authorize } from '../../middleware/auth.js';
-import { upload, publicUploadPath } from '../../middleware/upload.js';
+import { upload, publicUploadPath, finalizeUploadedFile } from '../../middleware/upload.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { Project } from '../../models/Project.js';
 import { Task } from '../../models/Task.js';
@@ -55,6 +55,13 @@ router.post(
   asyncHandler(async (req, res) => {
     const body = projectSchema.parse(req.body);
     const project = await Project.create({ ...body, owner: req.user!.id, members: body.members || [] });
+    try {
+      const { ensureProjectFolders } = await import('../../services/projectFolders.js');
+      await ensureProjectFolders(String(project._id), project.name, req.user!.id);
+    } catch (err) {
+      // Project remains usable; folders can be reconciled later via admin endpoint
+      console.warn('[projects] folder bootstrap failed', err);
+    }
     await writeAudit({
       actor: req.user!.id,
       action: 'create',
@@ -253,14 +260,15 @@ router.post(
     const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
     if (!files.length) throw new AppError('No files uploaded', 400);
 
+    const root = await DocumentFile.findOne({ projectFolderKey: `${id}:root` }).select('_id');
     const createdAttachments = [];
     for (const f of files) {
-      const url = publicUploadPath(f.filename);
+      const finalized = await finalizeUploadedFile(f);
       const attachment = {
-        name: f.originalname,
-        url,
-        size: f.size,
-        mime: f.mimetype,
+        name: finalized.name,
+        url: finalized.url,
+        size: finalized.size,
+        mime: finalized.mime,
         uploadedBy: new mongoose.Types.ObjectId(req.user!.id),
         createdAt: new Date(),
       };
@@ -268,16 +276,20 @@ router.post(
       createdAttachments.push(attachment);
 
       await DocumentFile.create({
-        name: f.originalname,
-        url,
-        mime: f.mimetype,
-        size: f.size,
+        name: finalized.name,
+        url: finalized.url,
+        mime: finalized.mime,
+        size: finalized.size,
         folder: 'projects',
-        visibility: 'company',
+        kind: 'file',
+        visibility: 'project',
         project: project._id,
+        parentId: root?._id,
         linkedModel: 'Project',
         linkedId: project._id,
+        owner: req.user!.id,
         uploadedBy: req.user!.id,
+        storageProvider: finalized.url.startsWith('http') ? 'cloudinary' : 'local',
       });
     }
 
@@ -344,6 +356,14 @@ router.patch(
     const before = await Project.findById(id).lean();
     if (!before) throw new NotFoundError('Project not found');
     const project = await Project.findByIdAndUpdate(id, body, { new: true });
+    if (body.name && project) {
+      try {
+        const { ensureProjectFolders } = await import('../../services/projectFolders.js');
+        await ensureProjectFolders(id, project.name, req.user!.id);
+      } catch {
+        /* non-fatal */
+      }
+    }
     await writeAudit({
       actor: req.user!.id,
       action: 'update',

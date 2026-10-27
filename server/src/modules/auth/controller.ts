@@ -181,17 +181,23 @@ export const uploadAvatar = [
       url = cloudRes.secure_url;
     }
 
-    await DocumentFile.create({
-      name: req.file.originalname,
-      url,
-      mime: req.file.mimetype,
-      size: req.file.size,
-      folder: 'avatars',
-      visibility: 'company',
-      linkedModel: 'User',
-      linkedId: req.user!.id,
-      uploadedBy: req.user!.id,
-    });
+    try {
+      await DocumentFile.create({
+        name: req.file.originalname,
+        url,
+        mime: req.file.mimetype,
+        size: req.file.size,
+        kind: 'file',
+        folder: 'avatars',
+        visibility: 'private',
+        linkedModel: 'User',
+        linkedId: req.user!.id,
+        owner: req.user!.id,
+        uploadedBy: req.user!.id,
+      });
+    } catch {
+      // Avatar profile update must not fail if file library metadata write fails
+    }
     const user = await authService.updateProfile(req.user!.id, { avatar: url }, req);
     res.json({ success: true, data: { user, url } });
   }),

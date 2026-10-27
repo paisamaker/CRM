@@ -84,6 +84,8 @@ export const PERMISSIONS: PermissionMap = {
    */
   manager: {
     dashboard_employee: READ,
+    /** Personal profile settings page (company prefs remain CEO-only in UI/API) */
+    settings: READ,
     clients: READ,
     leads: READ,
     projects: READ,
@@ -102,6 +104,7 @@ export const PERMISSIONS: PermissionMap = {
   },
   finance: {
     dashboard_employee: READ,
+    settings: READ,
     clients: READ,
     leads: READ,
     projects: READ,
@@ -126,6 +129,7 @@ export const PERMISSIONS: PermissionMap = {
   },
   employee: {
     dashboard_employee: READ,
+    settings: READ,
     clients: READ,
     leads: READ,
     projects: READ,

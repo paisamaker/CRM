@@ -16,5 +16,6 @@ export default {
     ],
   },
   testMatch: ['**/tests/**/*.test.ts'],
-  setupFilesAfterEnv: ['<rootDir>/src/tests/setup.ts'],
+  // setupFiles runs before test modules load so dotenv cannot inherit Atlas/prod URI
+  setupFiles: ['<rootDir>/src/tests/setup.ts'],
 };

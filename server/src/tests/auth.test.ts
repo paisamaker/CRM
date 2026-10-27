@@ -5,6 +5,7 @@ import { connectDB, disconnectDB } from '../config/db.js';
 import { User } from '../models/User.js';
 import { hashPassword } from '../utils/password.js';
 import { getSettings } from '../models/Settings.js';
+import { safeDropTestDatabase } from './safeDropDatabase.js';
 
 const app = createApp();
 
@@ -14,7 +15,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await mongoose.connection.dropDatabase();
+  await safeDropTestDatabase();
   await disconnectDB();
 });
 

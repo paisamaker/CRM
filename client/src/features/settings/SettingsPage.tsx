@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -36,6 +37,7 @@ export function SettingsPage() {
   const qc = useQueryClient();
   const currentUser = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
+  const setPermissions = useAuthStore((s) => s.setPermissions);
   const role = currentUser?.role;
 
   // Active Tab: 'profile' (all users), 'company' (CEO), 'cloudinary' (CEO)
@@ -66,10 +68,44 @@ export function SettingsPage() {
     }
   }, [currentUser]);
 
+  // Load latest profile from API (keeps form in sync after login / refresh)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get('/auth/me');
+        const payload = res.data.data;
+        const u = payload?.user || payload;
+        if (cancelled || !u) return;
+        if (payload?.permissions) setPermissions(payload.permissions);
+        updateUser({
+          name: u.name,
+          phone: u.phone,
+          designation: u.designation,
+          department: u.department,
+          avatar: u.avatar,
+          employeeId: u.employeeId,
+        });
+        setName(u.name || '');
+        setPhone(u.phone || '');
+        setDesignation(u.designation || '');
+        setDepartment(u.department || '');
+        setAvatarUrl(u.avatar || '');
+      } catch {
+        /* keep local session values */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, []);
+
   // --- Company Settings State (for CEO) ---
   const { data: settingsData } = useQuery({
     queryKey: ['settings'],
     queryFn: async () => (await api.get('/settings')).data.data,
+    enabled: role === 'ceo',
   });
 
   const [domains, setDomains] = useState('');
@@ -108,8 +144,10 @@ export function SettingsPage() {
         phone: updated.phone,
         designation: updated.designation,
         department: updated.department,
+        avatar: updated.avatar,
+        employeeId: updated.employeeId,
       });
-      toast.success('Profile details saved successfully!');
+      toast.success('Profile details saved — top bar & dashboard will show the updates');
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
@@ -235,7 +273,7 @@ export function SettingsPage() {
       {/* Page Header */}
       <PageHeader
         title="Settings & Profile"
-        description="Manage your personal profile, Cloudinary avatar, security preferences, and organization settings."
+        description="Update your profile photo, name, phone, and job details. Company-wide options are available to the CEO."
       />
 
       {/* Navigation Tabs */}
@@ -522,7 +560,7 @@ export function SettingsPage() {
                   </Badge>
                 </div>
 
-                <div className="pt-2">
+                <div className="pt-2 flex flex-wrap items-center gap-2">
                   <Button
                     onClick={() => saveProfileMutation.mutate()}
                     disabled={!name.trim() || saveProfileMutation.isPending}
@@ -531,6 +569,13 @@ export function SettingsPage() {
                     <Save className="h-3.5 w-3.5" />
                     <span>{saveProfileMutation.isPending ? 'Saving...' : 'Save Profile Changes'}</span>
                   </Button>
+                  <Link
+                    to="/security"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                  >
+                    <Shield className="h-3.5 w-3.5 text-slate-500" />
+                    Password &amp; MFA
+                  </Link>
                 </div>
               </div>
             </Card>

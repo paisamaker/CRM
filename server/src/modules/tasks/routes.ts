@@ -339,10 +339,11 @@ router.post(
         mime: f.mimetype,
         size: f.size,
         folder: 'tasks',
-        visibility: 'company',
+        visibility: task.project ? 'project' : 'private',
         project: task.project,
         linkedModel: 'Task',
         linkedId: task._id,
+        owner: req.user!.id,
         uploadedBy: req.user!.id,
       });
     }

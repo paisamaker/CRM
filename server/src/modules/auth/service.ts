@@ -365,6 +365,8 @@ export async function inviteUser(opts: {
   joiningDate?: Date;
   manager?: string;
   employeeId?: string;
+  /** When provided, create an active account with this password (skip invite accept flow). */
+  password?: string;
   invitedBy: string;
   invitedByRole?: Role;
   req?: Request;
@@ -385,51 +387,79 @@ export async function inviteUser(opts: {
     employeeId = await nextEmployeeId();
   }
 
-  const token = randomToken();
-  const passwordHash = await hashPassword(randomToken(16) + 'Aa1!');
+  const settings = await getSettings();
+  const setPasswordNow = Boolean(opts.password?.trim());
+  if (setPasswordNow) {
+    validatePassword(opts.password!, settings.passwordPolicy);
+  }
+
+  const plainPassword = setPasswordNow ? opts.password!.trim() : undefined;
+  const passwordHash = await hashPassword(
+    plainPassword || `${randomToken(16)}Aa1!`
+  );
+
+  const token = setPasswordNow ? undefined : randomToken();
   const user = await User.create({
     name: opts.name || opts.email.split('@')[0],
     email: opts.email.toLowerCase(),
     passwordHash,
+    passwordHistory: plainPassword ? [passwordHash] : [],
+    passwordChangedAt: plainPassword ? new Date() : undefined,
     role: opts.role,
     department: opts.department || 'General',
-    phone: opts.phone,
+    // Keep empty when admin leaves phone blank — never invent a number
+    phone: opts.phone?.trim() || undefined,
     designation: opts.designation,
     joiningDate: opts.joiningDate,
     manager: opts.manager || undefined,
     employeeId,
-    status: 'invited',
-    inviteToken: hashToken(token),
-    inviteExpires: new Date(Date.now() + 48 * 60 * 60 * 1000),
+    status: setPasswordNow ? 'active' : 'invited',
+    inviteToken: token ? hashToken(token) : undefined,
+    inviteExpires: token ? new Date(Date.now() + 48 * 60 * 60 * 1000) : undefined,
   });
 
   const clientBase = env.clientOrigins[0] || env.CLIENT_URL.split(',')[0];
-  const link = `${clientBase}/accept-invite?token=${token}`;
-  await sendEmail({
-    to: user.email,
-    subject: 'You are invited to STAR MEDIA CRM',
-    html: `<p>You have been invited as <b>${opts.role}</b>.</p><p><a href="${link}">Accept invite</a> (expires in 48 hours)</p>`,
-  });
+  let inviteLink: string | undefined;
+  if (token) {
+    inviteLink = `${clientBase}/accept-invite?token=${token}`;
+    await sendEmail({
+      to: user.email,
+      subject: 'You are invited to STAR MEDIA CRM',
+      html: `<p>You have been invited as <b>${opts.role}</b>.</p><p><a href="${inviteLink}">Accept invite</a> (expires in 48 hours)</p>`,
+    });
+  } else {
+    await sendEmail({
+      to: user.email,
+      subject: 'Your STAR MEDIA CRM account is ready',
+      html: `<p>Hi ${user.name},</p><p>Your account is ready. Sign in at <a href="${clientBase}/login">${clientBase}/login</a> with your work email. Your admin will share the password with you.</p>`,
+    });
+  }
 
   await writeAudit({
     actor: opts.invitedBy,
-    action: 'invite',
+    action: setPasswordNow ? 'create_user_with_password' : 'invite',
     entity: 'User',
     entityId: user._id.toString(),
-    after: { email: user.email, role: user.role },
+    after: { email: user.email, role: user.role, status: user.status },
     req: opts.req,
   });
 
   const { notifyCeos } = await import('../../utils/notify.js');
   await notifyCeos({
     type: 'user_invite',
-    title: 'New user invited',
-    message: `${user.email} was invited as ${user.role}`,
+    title: setPasswordNow ? 'New employee created' : 'New user invited',
+    message: `${user.email} was added as ${user.role}`,
     link: '/users',
     email: false,
   });
 
-  return { user: sanitizeUser(user), inviteLink: link };
+  return {
+    user: sanitizeUser(user),
+    inviteLink,
+    /** Returned once when admin set a password at create time */
+    loginPassword: plainPassword,
+    activated: setPasswordNow,
+  };
 }
 
 export async function acceptInvite(token: string, name: string, password: string) {

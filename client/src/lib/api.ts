@@ -207,6 +207,29 @@ export function isPdfFile(nameOrMime = ''): boolean {
   return lower.includes('pdf') || lower.endsWith('.pdf');
 }
 
+export function isVideoFile(nameOrMime = ''): boolean {
+  const lower = nameOrMime.toLowerCase();
+  return (
+    lower.startsWith('video/') ||
+    lower.endsWith('.mp4') ||
+    lower.endsWith('.webm') ||
+    lower.endsWith('.mov') ||
+    lower.endsWith('.mkv')
+  );
+}
+
+export function isAudioFile(nameOrMime = ''): boolean {
+  const lower = nameOrMime.toLowerCase();
+  return (
+    lower.startsWith('audio/') ||
+    lower.endsWith('.mp3') ||
+    lower.endsWith('.wav') ||
+    lower.endsWith('.ogg') ||
+    lower.endsWith('.m4a') ||
+    lower.endsWith('.webm')
+  );
+}
+
 export async function downloadFile(urlOrPath: string, filename?: string) {
   try {
     const directUrl = getFileDownloadUrl(urlOrPath);

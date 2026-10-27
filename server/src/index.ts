@@ -18,6 +18,13 @@ async function main() {
 
   if (env.NODE_ENV !== 'test') {
     startJobs();
+    // Idempotent backfill for projects missing auto-folders (non-blocking)
+    void import('./services/projectFolders.js')
+      .then(({ reconcileMissingProjectFolders }) => reconcileMissingProjectFolders(100))
+      .then((fixed) => {
+        if (fixed > 0) logger.info({ fixed }, 'Reconciled missing project folders');
+      })
+      .catch((err) => logger.warn({ err }, 'Project folder reconcile skipped'));
   }
 
   server.listen(env.PORT, '0.0.0.0', () => {

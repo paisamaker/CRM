@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -21,11 +21,13 @@ import {
   FileText,
   X,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { api } from '@/lib/api';
 
 interface NavItem {
   to: string;
@@ -87,8 +89,21 @@ const sections: NavSection[] = [
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   const user = useAuthStore((s) => s.user);
   const can = useAuthStore((s) => s.can);
+  const clearSession = useAuthStore((s) => s.clearSession);
   const collapsed = useUIStore((s) => s.sidebarCollapsed);
   const setCollapsed = useUIStore((s) => s.setSidebarCollapsed);
+  const navigate = useNavigate();
+
+  async function logout() {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      /* ignore */
+    }
+    clearSession();
+    onNavigate?.();
+    navigate('/login');
+  }
 
   return (
     <div className="relative flex h-full flex-col justify-between overflow-hidden bg-gradient-to-b from-white via-[#F6F9FA] to-[#EDF5F5] text-slate-700">
@@ -216,7 +231,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-1">
+        <div className="flex items-center justify-between gap-1 pt-1">
           <div className="flex items-center gap-2.5 min-w-0">
             <UserAvatar
               name={user?.name || 'User'}
@@ -230,14 +245,25 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
               </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setCollapsed(!collapsed)}
-            className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-200/60 transition"
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </button>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition"
+              title="Log out"
+              aria-label="Log out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setCollapsed(!collapsed)}
+              className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-200/60 transition"
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -8,6 +8,7 @@ import { Approval } from '../models/Approval.js';
 import { Transaction } from '../models/Transaction.js';
 import { hashPassword } from '../utils/password.js';
 import { getSettings } from '../models/Settings.js';
+import { safeDropTestDatabase } from './safeDropDatabase.js';
 
 const app = createApp();
 
@@ -22,7 +23,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await mongoose.connection.dropDatabase();
+  await safeDropTestDatabase();
   await disconnectDB();
 });
 

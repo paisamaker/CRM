@@ -40,11 +40,11 @@ export function ProfileSection() {
   }
   if (!user) return null;
 
-  const empId = user.employeeId || 'SM0003';
+  const empId = user.employeeId || '—';
   const designation = toTitleCase(user.designation) || 'Team Member';
   const name = toTitleCase(user.name);
   const role = user.role === 'ceo' ? 'EXECUTIVE' : user.role?.toUpperCase() || 'EMPLOYEE';
-  const contact = user.phone || '+91 98765 43210';
+  const contact = user.phone?.trim() || 'Not set';
 
   return (
     <div className="h-full flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs transition-all">

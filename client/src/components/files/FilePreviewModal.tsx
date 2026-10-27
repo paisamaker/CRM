@@ -9,7 +9,15 @@ import {
   FileText,
   Image as ImageIcon,
 } from 'lucide-react';
-import { api, getAuthenticatedFileUrl, downloadFile, isImageFile, isPdfFile } from '@/lib/api';
+import {
+  api,
+  getAuthenticatedFileUrl,
+  downloadFile,
+  isImageFile,
+  isPdfFile,
+  isVideoFile,
+  isAudioFile,
+} from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 
@@ -113,6 +121,8 @@ export function FilePreviewModal({ file, onClose }: Props) {
   const previewUrl = blobUrl || fallbackAuthUrl;
   const isImg = isImageFile(file.mime || file.name);
   const isPdf = isPdfFile(file.mime || file.name);
+  const isVideo = isVideoFile(file.mime || file.name);
+  const isAudio = isAudioFile(file.mime || file.name) && !isVideo;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
@@ -246,6 +256,15 @@ export function FilePreviewModal({ file, onClose }: Props) {
         ) : isPdf ? (
           <div className="h-full w-full max-w-6xl rounded-xl bg-white shadow-2xl overflow-hidden border border-white/20 flex flex-col">
             <iframe src={previewUrl} title={file.name} className="w-full flex-1 border-0" />
+          </div>
+        ) : isVideo ? (
+          <div className="w-full max-w-5xl rounded-xl overflow-hidden bg-black shadow-2xl border border-white/20">
+            <video src={previewUrl} controls className="w-full max-h-[80vh]" />
+          </div>
+        ) : isAudio ? (
+          <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-white/10 p-8 text-center text-white backdrop-blur-xl">
+            <h3 className="text-lg font-bold mb-4">{file.name}</h3>
+            <audio src={previewUrl} controls className="w-full" />
           </div>
         ) : (
           <div className="max-w-md rounded-2xl border border-white/15 bg-white/10 p-8 text-center text-white backdrop-blur-xl shadow-2xl">
