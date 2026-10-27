@@ -80,10 +80,7 @@ See root `.env.example`:
 
 Never put storage secrets in `VITE_*` variables.
 
-## Tests
+## Ops notes
 
-```bash
-npm test -w server -- --testPathPattern=files-permissions
-```
-
-Covers project folder idempotency, ACL scoping, share/revoke, download denial, orphan path guessing, membership revocation, trash/restore, and manager-level elevation block.
+- CEO can run `POST /api/v1/files/admin/reconcile-project-folders` to backfill missing project folders.
+- Membership access is live via `Project.members` (no duplicate permission sync table).

@@ -20,7 +20,7 @@ import {
   isFileAdmin,
   loadDocument,
 } from '../../services/filePermissions.js';
-import { ensureProjectFolders, reconcileMissingProjectFolders } from '../../services/projectFolders.js';
+import { reconcileMissingProjectFolders } from '../../services/projectFolders.js';
 import type { Role } from '../../config/permissions.js';
 
 const router = Router();
@@ -655,5 +655,4 @@ router.get(
   })
 );
 
-export { ensureProjectFolders };
 export default router;

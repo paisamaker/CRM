@@ -36,44 +36,23 @@ docker compose up -d
 
 Or use any MongoDB URI in `.env` (`MONGODB_URI`).
 
-### 3. Seed demo data
-
-```bash
-npm run seed
-```
-
-Creates ~15 users, 40 clients, 120 leads, 200 tasks, and ~2 years of transactions.
-
-### 4. Run
+### 3. Run
 
 ```bash
 npm run dev
 ```
 
 - Client: http://localhost:5173  
-- API: http://localhost:5000/api/v1/health  
+- API: http://localhost:5001/api/v1/health  
 
-### Demo logins
-
-| Role     | Email                              | Password         |
-|----------|------------------------------------|------------------|
-| CEO      | ceo@starmediainfluencer.com        | StarMedia#2026!  |
-| Manager  | manager@starmediainfluencer.com    | StarMedia#2026!  |
-| Finance  | finance@starmediainfluencer.com    | StarMedia#2026!  |
-| Employee | employee@starmediainfluencer.com   | StarMedia#2026!  |
-
-Only `@starmediainfluencer.com` emails are accepted (configurable in Settings / `.env`).
-
-CEO / Manager / Finance are prompted to set up authenticator MFA on first login.
+Create the first admin from the app (CEO invite / add employee) or insert a user in MongoDB. Only `@starmediainfluencer.com` emails are accepted by default (configurable in Settings / `.env`).
 
 ## Scripts
 
-| Command        | Description                          |
-|----------------|--------------------------------------|
-| `npm run dev`  | API + Vite client                    |
-| `npm run seed` | Reset DB and load demo data          |
-| `npm run test` | Server Jest tests (+ client if any)  |
-| `npm run build`| Build server and client              |
+| Command         | Description           |
+|-----------------|-----------------------|
+| `npm run dev`   | API + Vite client     |
+| `npm run build` | Build server + client |
 
 ## Monorepo layout
 
