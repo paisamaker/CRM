@@ -182,8 +182,8 @@ export function CeoYearProfitSection() {
                   fontSize: 12,
                   background: 'var(--bg-elevated)',
                 }}
-                formatter={(value: number, name: string) => [
-                  formatCurrency(Number(value || 0)),
+                formatter={(value, name) => [
+                  formatCurrency(Number(value ?? 0)),
                   name === 'income' ? 'Revenue' : name === 'expense' ? 'Expenses' : 'Net profit',
                 ]}
               />

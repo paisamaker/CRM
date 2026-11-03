@@ -42,6 +42,8 @@ export interface BillItem {
   client?: string;
   description?: string;
   notes?: string;
+  payments?: unknown[];
+  createdBy?: string | { _id?: string };
   scannedDocument?: any;
   documentHash?: string;
   attachment?: {
