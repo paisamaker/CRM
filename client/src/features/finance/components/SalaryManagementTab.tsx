@@ -25,6 +25,7 @@ import { TableShell, EmptyState } from '@/components/ui/Card';
 import { PaySalaryModal, type SalaryItem } from './PaySalaryModal';
 import { useAuthStore } from '@/stores/auth';
 import { syncFinanceQueries } from '../financeSync';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 
 export function SalaryManagementTab() {
   const qc = useQueryClient();
@@ -312,17 +313,18 @@ export function SalaryManagementTab() {
                                 type="button"
                                 className="rounded p-1 text-[var(--fg-secondary)] transition-colors hover:bg-rose-50 hover:text-rose-700"
                                 disabled={deleteMutation.isPending}
-                                onClick={() => {
-                                  if (
-                                    confirm(
+                                onClick={async () => {
+                                  const ok = await confirmDialog({
+                                    title: 'Delete salary record?',
+                                    description:
                                       `Delete salary for ${emp?.name || 'employee'} (${item.period})?` +
-                                        (isPaid
-                                          ? ' The linked expense and bank balance will be reversed.'
-                                          : '')
-                                    )
-                                  ) {
-                                    deleteMutation.mutate(item._id);
-                                  }
+                                      (isPaid
+                                        ? ' The linked expense and bank balance will be reversed.'
+                                        : ''),
+                                    confirmLabel: 'Delete',
+                                    tone: 'danger',
+                                  });
+                                  if (ok) deleteMutation.mutate(item._id);
                                 }}
                                 title="Delete salary (CEO)"
                               >

@@ -9,6 +9,8 @@ export const APPROVAL_TYPES = [
   'bonus',
   'budget_allocation',
   'client_bill',
+  'payment_request',
+  'payment_request_proof',
 ] as const;
 
 export interface IApproval extends Document {

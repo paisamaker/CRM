@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { api, getErrorMessage } from '@/lib/api';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import { formatFileSize, resolveChatMediaUrl } from '../chatUtils';
 import type { Conversation, Colleague, Message, ChatAttachment } from '../types';
 
@@ -309,8 +310,14 @@ export function DetailsPanel({
             <button
               type="button"
               className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-              onClick={() => {
-                if (!window.confirm('Leave this group?')) return;
+              onClick={async () => {
+                const ok = await confirmDialog({
+                  title: 'Leave this group?',
+                  description: 'You will stop receiving messages from this conversation.',
+                  confirmLabel: 'Leave group',
+                  tone: 'danger',
+                });
+                if (!ok) return;
                 void api
                   .patch(`/chat/conversations/${conversation._id}/members`, { leave: true })
                   .then(() => {

@@ -13,16 +13,19 @@ import { cn } from '@/lib/utils';
 import {
   generateYearCalendarGrid,
   ACTIVITY_COLORS,
+  HOLIDAY_COLOR,
+  SUNDAY_COLOR,
   formatDateReadable,
   formatDurationMinutes,
   type CalendarDayCell,
 } from '../attendanceUtils';
-import type { DayHeatmapData, HeatmapSummary } from '../types';
+import type { CompanyHoliday, DayHeatmapData, HeatmapSummary } from '../types';
 
 interface WorkforceHeatmapProps {
   year: number;
   onYearChange: (year: number) => void;
   days: Record<string, DayHeatmapData>;
+  holidays?: CompanyHoliday[];
   summary?: HeatmapSummary;
   onSelectDate: (date: string) => void;
   selectedDate?: string | null;
@@ -37,6 +40,7 @@ export function WorkforceHeatmap({
   year,
   onYearChange,
   days,
+  holidays = [],
   summary,
   onSelectDate,
   selectedDate,
@@ -87,8 +91,8 @@ export function WorkforceHeatmap({
           </div>
           <p className="mt-0.5 text-xs text-slate-500">
             {isSingleEmployee
-              ? 'Recorded daily working duration and logged contributions.'
-              : 'Daily company workforce presence, cumulative logged hours, and activity intensity.'}
+              ? 'Working days exclude Sundays and company holidays. Click a day for session details.'
+              : 'Mon–Sat work week · Sundays off · Company holidays excluded from attendance rate.'}
           </p>
         </div>
 
@@ -147,10 +151,15 @@ export function WorkforceHeatmap({
           </div>
           <div>
             <span className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-wider">
-              Active Working Days
+              Active / Expected
             </span>
             <p className="mt-0.5 text-sm font-bold text-slate-900">
-              {summary.activeWorkingDays} days
+              {summary.activeWorkingDays}
+              {summary.expectedWorkingDays != null ? (
+                <span className="font-medium text-slate-500"> / {summary.expectedWorkingDays}</span>
+              ) : (
+                <span className="font-medium text-slate-500"> days</span>
+              )}
             </p>
           </div>
           <div>
@@ -205,7 +214,9 @@ export function WorkforceHeatmap({
               <span className="opacity-0">Thu</span>
               <span>Fri</span>
               <span className="opacity-0">Sat</span>
-              <span className="text-slate-300">Sun</span>
+              <span className="text-slate-300" title="Weekly off">
+                Sun
+              </span>
             </div>
 
             {/* Weeks columns */}
@@ -216,9 +227,13 @@ export function WorkforceHeatmap({
                     const dayData = days[day.date];
                     const level = dayData?.level ?? 0;
                     const isSelected = selectedDate === day.date;
-                    const cellBg = day.isFuture
+                    const isHoliday = !!(dayData?.isHoliday || dayData?.holidayName);
+                    const isSun = day.dayOfWeek === 6 || !!dayData?.isSunday;
+                    let cellBg = day.isFuture
                       ? '#F8FAFC'
                       : ACTIVITY_COLORS[level as keyof typeof ACTIVITY_COLORS];
+                    if (!day.isFuture && isHoliday) cellBg = HOLIDAY_COLOR;
+                    else if (!day.isFuture && isSun && level === 0) cellBg = SUNDAY_COLOR;
 
                     return (
                       <button
@@ -237,11 +252,20 @@ export function WorkforceHeatmap({
                           'h-[11.5px] w-[11.5px] rounded-[2.5px] transition-transform duration-75 focus:outline-none',
                           !day.isFuture && 'hover:scale-135 hover:z-10 hover:shadow-xs active:scale-110 cursor-pointer',
                           day.isFuture && 'opacity-40 cursor-default',
+                          isSun && !isHoliday && level === 0 && 'opacity-90',
                           isSelected && 'ring-2 ring-teal-600 ring-offset-1 z-10',
                           day.isToday && !isSelected && 'ring-1.5 ring-slate-700'
                         )}
                         style={{ backgroundColor: cellBg }}
-                        aria-label={`${day.date}: ${dayData?.totalHours || 0} hours`}
+                        aria-label={
+                          isHoliday
+                            ? `${day.date}: Holiday — ${dayData?.holidayName || 'Off'}`
+                            : isSun && (dayData?.totalMinutes || 0) > 0
+                              ? `${day.date}: Sunday extra work ${dayData?.totalHours || 0}h`
+                              : isSun
+                                ? `${day.date}: Sunday off`
+                                : `${day.date}: ${dayData?.totalHours || 0} hours`
+                        }
                       />
                     );
                   })}
@@ -275,8 +299,31 @@ export function WorkforceHeatmap({
           </div>
 
           <div className="mt-2 space-y-1.5 text-[11px]">
+            {(hoveredCell.data?.isHoliday || hoveredCell.data?.holidayName) && (
+              <div className="rounded-md bg-amber-50 px-2 py-1 text-amber-900 font-semibold">
+                Holiday — {hoveredCell.data?.holidayName || 'Company off'}
+              </div>
+            )}
+            {hoveredCell.day.dayOfWeek === 6 && !hoveredCell.data?.isHoliday && (
+              <div
+                className={cn(
+                  'rounded-md px-2 py-1 font-medium',
+                  (hoveredCell.data?.totalMinutes || 0) > 0
+                    ? 'bg-teal-50 text-teal-900'
+                    : 'bg-slate-100 text-slate-600'
+                )}
+              >
+                {(hoveredCell.data?.totalMinutes || 0) > 0
+                  ? `Sunday extra work — ${formatDurationMinutes(hoveredCell.data?.totalMinutes || 0)}`
+                  : 'Sunday — weekly off (not counted)'}
+              </div>
+            )}
             <div className="flex items-center justify-between">
-              <span className="text-slate-500">Total Logged Time:</span>
+              <span className="text-slate-500">
+                {hoveredCell.day.dayOfWeek === 6 && (hoveredCell.data?.totalMinutes || 0) > 0
+                  ? 'Extra work time:'
+                  : 'Total Logged Time:'}
+              </span>
               <span className="font-bold text-slate-900">
                 {formatDurationMinutes(hoveredCell.data?.totalMinutes || 0)}
               </span>
@@ -362,36 +409,30 @@ export function WorkforceHeatmap({
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-1.5 text-[11px]">
-          <span>Less</span>
-          <div className="flex items-center gap-1">
-            <span
-              className="h-3 w-3 rounded-xs"
-              style={{ backgroundColor: ACTIVITY_COLORS[0] }}
-              title="Level 0: No recorded activity"
-            />
-            <span
-              className="h-3 w-3 rounded-xs"
-              style={{ backgroundColor: ACTIVITY_COLORS[1] }}
-              title="Level 1: < 2 logged hours"
-            />
-            <span
-              className="h-3 w-3 rounded-xs"
-              style={{ backgroundColor: ACTIVITY_COLORS[2] }}
-              title="Level 2: 2 - 4 logged hours"
-            />
-            <span
-              className="h-3 w-3 rounded-xs"
-              style={{ backgroundColor: ACTIVITY_COLORS[3] }}
-              title="Level 3: 4 - 6 logged hours"
-            />
-            <span
-              className="h-3 w-3 rounded-xs"
-              style={{ backgroundColor: ACTIVITY_COLORS[4] }}
-              title="Level 4: 6+ logged hours"
-            />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px]">
+          <div className="flex items-center gap-1.5">
+            <span>Less</span>
+            <div className="flex items-center gap-1">
+              <span className="h-3 w-3 rounded-xs" style={{ backgroundColor: ACTIVITY_COLORS[0] }} />
+              <span className="h-3 w-3 rounded-xs" style={{ backgroundColor: ACTIVITY_COLORS[1] }} />
+              <span className="h-3 w-3 rounded-xs" style={{ backgroundColor: ACTIVITY_COLORS[2] }} />
+              <span className="h-3 w-3 rounded-xs" style={{ backgroundColor: ACTIVITY_COLORS[3] }} />
+              <span className="h-3 w-3 rounded-xs" style={{ backgroundColor: ACTIVITY_COLORS[4] }} />
+            </div>
+            <span>More</span>
           </div>
-          <span>More</span>
+          <span className="inline-flex items-center gap-1 text-slate-500">
+            <span className="h-3 w-3 rounded-xs border border-slate-600" style={{ backgroundColor: SUNDAY_COLOR }} />
+            Sunday off
+          </span>
+          <span className="inline-flex items-center gap-1 text-slate-500">
+            <span className="h-3 w-3 rounded-xs border border-teal-500" style={{ backgroundColor: ACTIVITY_COLORS[3] }} />
+            Sunday extra
+          </span>
+          <span className="inline-flex items-center gap-1 text-slate-500">
+            <span className="h-3 w-3 rounded-xs border border-amber-200" style={{ backgroundColor: HOLIDAY_COLOR }} />
+            Holiday{holidays.length ? ` (${holidays.length})` : ''}
+          </span>
         </div>
       </div>
     </div>

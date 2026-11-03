@@ -8,6 +8,7 @@ import { paginate } from '../../utils/pagination.js';
 import { writeAudit } from '../../utils/audit.js';
 import { env } from '../../config/env.js';
 import { PERMISSIONS } from '../../config/permissions.js';
+import { memoryCache } from '../../utils/cache.js';
 
 const router = Router();
 router.use(authenticate);
@@ -56,6 +57,15 @@ router.patch(
             address: z.string().optional(),
           })
           .optional(),
+        companyHolidays: z
+          .array(
+            z.object({
+              date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+              name: z.string().trim().min(1).max(120),
+              recurring: z.boolean().optional(),
+            })
+          )
+          .optional(),
         cloudinary: z
           .object({
             cloudName: z.string().optional(),
@@ -69,6 +79,7 @@ router.patch(
 
     const before = await getSettings();
     const settings = await Settings.findByIdAndUpdate(before._id, body, { new: true });
+    memoryCache.del('system_settings');
     await writeAudit({
       actor: req.user!.id,
       action: 'update',

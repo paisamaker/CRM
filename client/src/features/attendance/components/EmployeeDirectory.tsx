@@ -213,7 +213,9 @@ export function EmployeeDirectory({
                 {paginatedItems.map((item) => (
                   <tr
                     key={item.user._id}
-                    className="group hover:bg-slate-50/70 transition-colors"
+                    className="group cursor-pointer hover:bg-teal-50/40 transition-colors"
+                    onClick={() => onSelectEmployee(item.user._id)}
+                    title="Open profile — today session & month window"
                   >
                     {/* Employee Profile */}
                     <td className="py-3 pl-2 pr-4">
@@ -224,13 +226,9 @@ export function EmployeeDirectory({
                           className="h-9 w-9 rounded-xl text-xs"
                         />
                         <div className="min-w-0">
-                          <button
-                            type="button"
-                            onClick={() => onSelectEmployee(item.user._id)}
-                            className="text-left font-bold text-slate-900 hover:text-teal-700 truncate"
-                          >
+                          <div className="font-bold text-slate-900 group-hover:text-teal-700 truncate">
                             {item.user.name}
-                          </button>
+                          </div>
                           <div className="truncate text-[11px] text-slate-500">
                             {item.user.department || item.user.role} · {item.user.email}
                           </div>
@@ -306,10 +304,13 @@ export function EmployeeDirectory({
                     <td className="py-3 pr-2 pl-3 text-right whitespace-nowrap">
                       <button
                         type="button"
-                        onClick={() => onSelectEmployee(item.user._id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectEmployee(item.user._id);
+                        }}
                         className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs hover:border-teal-300 hover:bg-teal-50 hover:text-teal-900 transition"
                       >
-                        <span>Profile &amp; Logs</span>
+                        <span>Today &amp; Month</span>
                         <ExternalLink className="h-3 w-3" />
                       </button>
                     </td>

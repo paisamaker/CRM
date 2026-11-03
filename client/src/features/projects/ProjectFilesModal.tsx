@@ -23,6 +23,7 @@ import { formatDate } from '@/lib/utils';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { FilePreviewModal, type PreviewFile } from '@/components/files/FilePreviewModal';
 import { AttachmentsSection, type AttachmentItem } from '@/components/files/AttachmentsSection';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface ProjectFilesModalProps {
   projectId: string | null;
@@ -368,9 +369,16 @@ export function ProjectFilesModal({
                             <button
                               type="button"
                               onClick={async () => {
-                                if (confirm(`Remove "${file.name}"?`)) {
-                                  await deleteProjectAttachment.mutateAsync(file._id!);
-                                }
+                                const ok = await confirmDialog({
+                                  title: 'Remove file?',
+                                  description: 'This removes the attachment from the project.',
+                                  detail: (
+                                    <span className="font-semibold text-slate-900">{file.name}</span>
+                                  ),
+                                  confirmLabel: 'Remove',
+                                  tone: 'danger',
+                                });
+                                if (ok) await deleteProjectAttachment.mutateAsync(file._id!);
                               }}
                               className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition"
                               title="Delete file"

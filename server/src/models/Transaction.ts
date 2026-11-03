@@ -16,6 +16,7 @@ export interface ITransaction extends Document {
   invoice?: Types.ObjectId;
   bill?: Types.ObjectId;
   payroll?: Types.ObjectId;
+  paymentRequest?: Types.ObjectId;
   bankAccount?: Types.ObjectId;
   invoiceNumber?: string;
   documentHash?: string;
@@ -49,6 +50,7 @@ const transactionSchema = new Schema<ITransaction>(
     invoice: { type: Schema.Types.ObjectId, ref: 'Invoice', index: true },
     bill: { type: Schema.Types.ObjectId, ref: 'Bill', index: true },
     payroll: { type: Schema.Types.ObjectId, ref: 'Payroll', index: true },
+    paymentRequest: { type: Schema.Types.ObjectId, ref: 'PaymentRequest', index: true },
     bankAccount: { type: Schema.Types.ObjectId, ref: 'BankAccount', index: true },
     invoiceNumber: { type: String, trim: true, index: true },
     documentHash: { type: String, index: true },

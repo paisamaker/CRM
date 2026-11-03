@@ -51,6 +51,7 @@ import { formatCurrency, formatDate, formatPercent } from '@/lib/utils';
 import { AttendanceWidget, isAttendanceExempt } from '@/features/attendance/AttendanceWidget';
 import { PersonalActivityHeatmap } from '@/features/attendance/components/PersonalActivityHeatmap';
 import { ProfileSection } from '@/features/dashboard/ProfileSection';
+import { CeoYearProfitSection } from '@/features/dashboard/CeoYearProfitSection';
 
 const ranges = [
   { id: 'today', label: 'Today' },
@@ -283,16 +284,16 @@ function CeoDashboard() {
   }, [data?.revenueVsExpenses]);
 
   return (
-    <div className="space-y-5 bg-[#F7F8FA] min-h-screen pb-12 font-sans text-[#171923]">
+    <div className="space-y-5 bg-[var(--bg)] min-h-screen pb-12 font-sans text-[var(--fg)]">
       {/* ========================================================= */}
       {/* 1. MAIN DASHBOARD HEADER & CONTROLS                       */}
       {/* ========================================================= */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-1">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-[#171923] sm:text-2xl">
+          <h1 className="text-xl font-bold tracking-tight text-[var(--fg)] sm:text-2xl">
             Welcome back, {user?.name ? user.name.split(' ')[0] : 'Director'} 👋
           </h1>
-          <p className="mt-0.5 text-xs text-[#667085]">
+          <p className="mt-0.5 text-xs text-[var(--fg-muted)]">
             Here's what's happening with your business today.
           </p>
         </div>
@@ -363,9 +364,9 @@ function CeoDashboard() {
       </div>
 
       {/* ========================================================= */}
-      {/* 2. COMPACT PROFILE HEADER                                  */}
+      {/* 2. CEO YEAR PROFIT OVERVIEW (replaces identity card)       */}
       {/* ========================================================= */}
-      <ProfileSection />
+      <CeoYearProfitSection />
 
       {/* Loading & Error States */}
       {(!data || !k) && isLoading ? (
@@ -1165,14 +1166,14 @@ function EmployeeDashboard() {
   }
 
   return (
-    <div className="space-y-5 bg-[#F7F8FA] min-h-screen pb-12 font-sans text-[#171923]">
+    <div className="space-y-5 bg-[var(--bg)] min-h-screen pb-12 font-sans text-[var(--fg)]">
       {/* Employee Workspace Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-1">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-[#171923] sm:text-2xl">
+          <h1 className="text-xl font-bold tracking-tight text-[var(--fg)] sm:text-2xl">
             Welcome back, {user?.name ? user.name.split(' ')[0] : 'Team Member'} 👋
           </h1>
-          <p className="mt-0.5 text-xs text-[#667085]">
+          <p className="mt-0.5 text-xs text-[var(--fg-muted)]">
             Track your daily deliverables, attendance check-in, and team communication.
           </p>
         </div>
@@ -1183,7 +1184,7 @@ function EmployeeDashboard() {
             </Button>
           </Link>
           <Link to="/chat">
-            <Button size="sm" variant="outline" className="h-9 font-semibold text-xs border-[#E5E7EB] bg-white text-[#171923]">
+            <Button size="sm" variant="outline" className="h-9 font-semibold text-xs">
               Agency Chat
             </Button>
           </Link>

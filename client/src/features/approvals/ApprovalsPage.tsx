@@ -36,6 +36,7 @@ export function ApprovalsPage() {
     onSuccess: async () => {
       toast.success('Approved');
       qc.invalidateQueries({ queryKey: ['approvals'] });
+      qc.invalidateQueries({ queryKey: ['sidebar-badges'] });
       await syncFinanceQueries(qc);
     },
     onError: (e) => toast.error(getErrorMessage(e)),
@@ -48,6 +49,7 @@ export function ApprovalsPage() {
       setRejectId(null);
       setReason('');
       qc.invalidateQueries({ queryKey: ['approvals'] });
+      qc.invalidateQueries({ queryKey: ['sidebar-badges'] });
       await syncFinanceQueries(qc);
     },
     onError: (e) => toast.error(getErrorMessage(e)),
@@ -59,6 +61,7 @@ export function ApprovalsPage() {
       toast.success('Bulk approved');
       setSelected([]);
       qc.invalidateQueries({ queryKey: ['approvals'] });
+      qc.invalidateQueries({ queryKey: ['sidebar-badges'] });
       await syncFinanceQueries(qc);
     },
     onError: (e) => toast.error(getErrorMessage(e)),
@@ -70,8 +73,8 @@ export function ApprovalsPage() {
         title={role === 'ceo' ? 'CEO Approvals' : 'My approval requests'}
         description={
           role === 'ceo'
-            ? 'Approve client bills, expenses, payroll, and procurement'
-            : 'Track bills and requests you sent to the CEO'
+            ? 'Approve client bills, expenses, payroll, and procurement. Payment requests are handled under Payment Requests.'
+            : 'Track bills and requests you sent to the CEO. Payment requests are under Payment Requests.'
         }
         actions={
           role === 'ceo' && selected.length ? (

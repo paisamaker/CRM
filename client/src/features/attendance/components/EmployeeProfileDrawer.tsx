@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -29,6 +29,14 @@ import {
   FileText,
   Eye,
   ListChecks,
+  KeyRound,
+  RefreshCw,
+  UserX,
+  UserCheck,
+  Trash2,
+  LogIn,
+  LogOut,
+  Timer,
 } from 'lucide-react';
 import {
   BarChart,
@@ -48,6 +56,8 @@ import {
   formatDurationMinutes,
   formatTime,
   formatDateReadable,
+  holidayNameForDate,
+  isSundayDateKey,
 } from '../attendanceUtils';
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils';
 import type { DayHeatmapData, HeatmapResponse, DayDetailRecord } from '../types';
@@ -116,11 +126,29 @@ interface WorkSummaryData {
   suggestedAmount?: number;
 }
 
+export type EmployeeProfileAdminActions = {
+  /** Show HR/account controls (edit, password, deactivate, delete) */
+  enabled?: boolean;
+  canEdit?: boolean;
+  canResetPassword?: boolean;
+  canDeactivate?: boolean;
+  canDelete?: boolean;
+  status?: string;
+  busy?: boolean;
+  onEdit?: () => void;
+  onSetPassword?: () => void;
+  onResetPassword?: () => void;
+  onDeactivate?: () => void;
+  onReactivate?: () => void;
+  onDelete?: () => void;
+};
+
 interface EmployeeProfileDrawerProps {
   employeeId: string | null;
   onClose: () => void;
   onOpenCorrect?: (recordId: string) => void;
   canManage?: boolean;
+  adminActions?: EmployeeProfileAdminActions;
 }
 
 function currentPeriod() {
@@ -146,11 +174,26 @@ function formatHours(minutes: number) {
   return `${h}h ${m}m`;
 }
 
+function shiftPeriod(period: string, deltaMonths: number) {
+  const [y, m] = period.split('-').map(Number);
+  const d = new Date(y, (m || 1) - 1 + deltaMonths, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function periodLabel(period: string) {
+  const [y, m] = period.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, 1).toLocaleDateString('en-IN', {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
 export function EmployeeProfileDrawer({
   employeeId,
   onClose,
   onOpenCorrect,
   canManage = true,
+  adminActions,
 }: EmployeeProfileDrawerProps) {
   const [activeTab, setActiveTab] = useState<'attendance' | 'projects' | 'history'>('attendance');
   const [selectedPeriod, setSelectedPeriod] = useState(currentPeriod());
@@ -158,8 +201,51 @@ export function EmployeeProfileDrawer({
   const [selectedDay, setSelectedDay] = useState<WorkDay | null>(null);
   const [showDayModal, setShowDayModal] = useState(false);
   const [showYearHeatmap, setShowYearHeatmap] = useState(false);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const pastPeriods = useMemo(() => getPastPeriods(4), []);
+
+  // Live clock while employee is checked in
+  useEffect(() => {
+    if (!employeeId) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [employeeId]);
+
+  useEffect(() => {
+    if (!employeeId) return;
+    setActiveTab('attendance');
+    setSelectedPeriod(currentPeriod());
+    setSelectedDay(null);
+    setShowYearHeatmap(false);
+  }, [employeeId]);
+
+  // Today's live attendance session for this employee
+  const { data: todayData, isLoading: isLoadingToday } = useQuery({
+    queryKey: ['attendance-employee-today', employeeId],
+    queryFn: async () => {
+      if (!employeeId) return null;
+      return (
+        await api.get('/attendance/today', {
+          params: { userId: employeeId },
+        })
+      ).data.data as {
+        date: string;
+        record?: {
+          _id?: string;
+          checkInAt?: string;
+          checkOutAt?: string;
+          durationMinutes?: number;
+          status?: string;
+          notes?: string;
+          workLog?: WorkDay['workLog'];
+        } | null;
+        isCheckedIn?: boolean;
+      };
+    },
+    enabled: !!employeeId,
+    refetchInterval: 60_000,
+  });
 
   // 1. Fetch monthly work, projects & attendance summary
   const { data: workData, isLoading: isLoadingWork } = useQuery({
@@ -223,7 +309,83 @@ export function EmployeeProfileDrawer({
   const summary = heatmapData?.summary;
   const days = heatmapData?.days || {};
 
-  // Monthly Heatmap Calendar calculations
+  const companyHolidays = heatmapData?.holidays || [];
+
+  const todayRecord = todayData?.record || null;
+  const isLiveCheckedIn = !!(
+    todayRecord?.checkInAt &&
+    !todayRecord?.checkOutAt &&
+    (todayRecord?.status === 'checked_in' || todayData?.isCheckedIn)
+  );
+  const todayLiveMinutes = useMemo(() => {
+    void nowTick;
+    if (!todayRecord?.checkInAt) return todayRecord?.durationMinutes || 0;
+    if (isLiveCheckedIn) {
+      return Math.max(
+        1,
+        Math.round((Date.now() - new Date(todayRecord.checkInAt).getTime()) / 60000)
+      );
+    }
+    return todayRecord.durationMinutes || 0;
+  }, [todayRecord, isLiveCheckedIn, nowTick]);
+
+  const todayIsSunday = !!(todayData?.date && isSundayDateKey(todayData.date));
+  const todayStatusLabel = isLiveCheckedIn
+    ? todayIsSunday
+      ? 'Extra work · checked in'
+      : 'Checked in'
+    : todayRecord?.checkOutAt
+      ? todayIsSunday
+        ? 'Extra work · checked out'
+        : 'Checked out'
+      : todayRecord?.status === 'missing_checkout'
+        ? 'Missing check-out'
+        : todayRecord?.checkInAt
+          ? String(todayRecord.status || 'Present').replace(/_/g, ' ')
+          : todayIsSunday
+            ? 'Sunday off'
+            : 'Not active today';
+
+  /** Sunday overtime for the selected month (not counted as regular workdays) */
+  const sundayExtra = useMemo(() => {
+    let minutes = 0;
+    let daysCount = 0;
+    const list: { date: string; minutes: number }[] = [];
+    const seen = new Set<string>();
+
+    for (const d of workData?.days || []) {
+      if (!d.date || !isSundayDateKey(d.date)) continue;
+      let mins = d.durationMinutes || 0;
+      if (d.status === 'checked_in' && d.checkInAt && !d.checkOutAt) {
+        mins = Math.max(1, Math.round((Date.now() - new Date(d.checkInAt).getTime()) / 60000));
+      }
+      if (mins <= 0 && !(d.checkInAt || d.status === 'checked_in' || d.status === 'checked_out')) continue;
+      minutes += mins;
+      daysCount += 1;
+      list.push({ date: d.date, minutes: mins });
+      seen.add(d.date);
+    }
+
+    // Fallback from yearly heatmap if work-summary missed a Sunday
+    for (const [date, day] of Object.entries(days)) {
+      if (!date.startsWith(selectedPeriod) || !isSundayDateKey(date) || seen.has(date)) continue;
+      const mins = day.totalMinutes || 0;
+      if (mins <= 0 && day.status !== 'checked_in') continue;
+      minutes += mins;
+      daysCount += 1;
+      list.push({ date, minutes: mins });
+    }
+
+    list.sort((a, b) => a.date.localeCompare(b.date));
+    return {
+      minutes,
+      days: daysCount,
+      hours: Math.round((minutes / 60) * 10) / 10,
+      list,
+    };
+  }, [workData?.days, days, selectedPeriod]);
+
+  // Monthly calendar — Mon→Sat work week; Sundays with hours = extra work (green)
   const calendarGrid = useMemo(() => {
     if (!selectedPeriod) return [];
     const [yearStr, monthStr] = selectedPeriod.split('-');
@@ -240,24 +402,49 @@ export function EmployeeProfileDrawer({
       dateStr: string;
       workData?: WorkDay;
       isCurrentMonth: boolean;
+      isSunday: boolean;
+      holidayName?: string;
+      extraMinutes: number;
     }[] = [];
 
     for (let i = 0; i < firstDayIndex; i++) {
-      cells.push({ dayNumber: 0, dateStr: '', isCurrentMonth: false });
+      cells.push({
+        dayNumber: 0,
+        dateStr: '',
+        isCurrentMonth: false,
+        isSunday: i === 6,
+        extraMinutes: 0,
+      });
     }
 
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${selectedPeriod}-${String(d).padStart(2, '0')}`;
+      const holidayName =
+        holidayNameForDate(dateStr, companyHolidays) || days[dateStr]?.holidayName;
+      const wd = daysMap.get(dateStr);
+      let extraMinutes = 0;
+      if (isSundayDateKey(dateStr)) {
+        extraMinutes = wd?.durationMinutes || days[dateStr]?.totalMinutes || 0;
+        if (wd?.status === 'checked_in' && wd.checkInAt && !wd.checkOutAt) {
+          extraMinutes = Math.max(
+            1,
+            Math.round((Date.now() - new Date(wd.checkInAt).getTime()) / 60000)
+          );
+        }
+      }
       cells.push({
         dayNumber: d,
         dateStr,
-        workData: daysMap.get(dateStr),
+        workData: wd,
         isCurrentMonth: true,
+        isSunday: isSundayDateKey(dateStr),
+        holidayName,
+        extraMinutes,
       });
     }
 
     return cells;
-  }, [selectedPeriod, workData?.days]);
+  }, [selectedPeriod, workData?.days, companyHolidays, days]);
 
   return (
     <>
@@ -267,7 +454,7 @@ export function EmployeeProfileDrawer({
       variant="dialog"
       size="full"
       title="Employee Profile, Attendance & Deliverables"
-      description="Comprehensive attendance analytics, monthly activity heatmap, projects delivered, and work logs."
+      description="Today’s login session, this month’s attendance window, and full work logs."
       footer={
         <div className="flex w-full items-center justify-between">
           <div className="flex items-center gap-2">
@@ -341,25 +528,247 @@ export function EmployeeProfileDrawer({
           </div>
 
           {/* Quick Summary Pill Badges */}
-          <div className="flex items-center gap-2.5">
-            <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-center shadow-2xs">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                Yearly Consistency
-              </span>
-              <p className="text-base font-extrabold text-teal-700">
-                {summary?.attendanceRate || 0}%
-              </p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-center shadow-2xs">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                Projects Active
-              </span>
-              <p className="text-base font-extrabold text-indigo-700">
-                {workData?.projectsTotal || 0}
-              </p>
+          <div className="flex flex-col items-stretch gap-2.5 sm:items-end">
+            <div className="flex items-center gap-2.5">
+              <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-center shadow-2xs">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                  Yearly Consistency
+                </span>
+                <p className="text-base font-extrabold text-teal-700">
+                  {summary?.attendanceRate || 0}%
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-center shadow-2xs">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                  Projects Active
+                </span>
+                <p className="text-base font-extrabold text-indigo-700">
+                  {workData?.projectsTotal || 0}
+                </p>
+              </div>
             </div>
           </div>
         </div>
+
+        {/* TODAY'S SESSION — live login time & day details */}
+        <div
+          className={cn(
+            'rounded-2xl border p-4 sm:p-5 shadow-2xs',
+            isLiveCheckedIn
+              ? 'border-emerald-200 bg-gradient-to-br from-emerald-50/90 to-white'
+              : 'border-slate-200 bg-white'
+          )}
+        >
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-bold text-slate-900">Today&apos;s session</h4>
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border capitalize',
+                    isLiveCheckedIn
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : todayRecord?.checkOutAt
+                        ? 'bg-slate-100 text-slate-700 border-slate-200'
+                        : 'bg-slate-50 text-slate-500 border-slate-200'
+                  )}
+                >
+                  {isLiveCheckedIn ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  ) : null}
+                  {isLoadingToday ? 'Loading…' : todayStatusLabel}
+                </span>
+                {todayData?.date ? (
+                  <span className="text-[11px] text-slate-500">{formatDateReadable(todayData.date)}</span>
+                ) : null}
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                <div className="rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5">
+                  <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    <LogIn className="h-3 w-3 text-teal-600" />
+                    Check-in
+                  </div>
+                  <p className="mt-1 text-sm font-bold text-slate-900">
+                    {formatTime(todayRecord?.checkInAt)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5">
+                  <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    <LogOut className="h-3 w-3 text-slate-500" />
+                    Check-out
+                  </div>
+                  <p className="mt-1 text-sm font-bold text-slate-900">
+                    {todayRecord?.checkOutAt ? formatTime(todayRecord.checkOutAt) : isLiveCheckedIn ? 'In progress' : '—'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/50 px-3 py-2.5 sm:col-span-2">
+                  <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-700/80">
+                    <Timer className="h-3 w-3" />
+                    {todayIsSunday && todayLiveMinutes > 0
+                      ? isLiveCheckedIn
+                        ? 'Sunday extra · live'
+                        : 'Sunday extra work'
+                      : isLiveCheckedIn
+                        ? 'Current login time'
+                        : 'Logged today'}
+                  </div>
+                  <p className="mt-1 text-xl font-extrabold tracking-tight text-emerald-800 tabular-nums">
+                    {formatHours(todayLiveMinutes)}
+                  </p>
+                  {todayIsSunday && todayLiveMinutes > 0 ? (
+                    <p className="mt-0.5 text-[11px] font-medium text-emerald-700/90">
+                      Counts as overtime — Sundays are weekly offs
+                    </p>
+                  ) : isLiveCheckedIn && todayRecord?.checkInAt ? (
+                    <p className="mt-0.5 text-[11px] text-emerald-700/80">
+                      Live since {formatTime(todayRecord.checkInAt)} · updates automatically
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-col justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-3 lg:w-56">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  This month so far
+                </div>
+                <p className="mt-1 text-lg font-extrabold text-slate-900">
+                  {workData?.workingDays ?? '—'}
+                  <span className="ml-1 text-xs font-medium text-slate-500">days</span>
+                </p>
+                <p className="text-xs text-slate-500">
+                  {workData?.totalHours != null ? `${workData.totalHours}h total` : 'Loading hours…'}
+                </p>
+                {sundayExtra.minutes > 0 ? (
+                  <p className="mt-1.5 rounded-lg bg-teal-50 border border-teal-200 px-2 py-1 text-[11px] font-semibold text-teal-800">
+                    Extra (Sundays): {formatHours(sundayExtra.minutes)} · {sundayExtra.days} day
+                    {sundayExtra.days === 1 ? '' : 's'}
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-[11px] text-slate-400">No Sunday overtime this month</p>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full gap-1.5 text-xs"
+                onClick={() => {
+                  setActiveTab('attendance');
+                  setSelectedPeriod(currentPeriod());
+                }}
+              >
+                <Calendar className="h-3.5 w-3.5 text-teal-600" />
+                Jump to month view
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Account management — edit / password / deactivate / delete */}
+        {adminActions?.enabled ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">Account &amp; employment</h4>
+                <p className="text-xs text-slate-500">
+                  Update profile details, login access, or remove this teammate.
+                </p>
+              </div>
+              {adminActions.status ? (
+                <Badge
+                  tone={adminActions.status === 'disabled' ? 'danger' : 'teal'}
+                  className="capitalize text-[10px]"
+                >
+                  {adminActions.status}
+                </Badge>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {adminActions.canEdit !== false && adminActions.onEdit ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={adminActions.busy}
+                  onClick={adminActions.onEdit}
+                  className="gap-1.5"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  Edit profile
+                </Button>
+              ) : null}
+              {adminActions.canResetPassword && adminActions.status !== 'disabled' ? (
+                <>
+                  {adminActions.onSetPassword ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={adminActions.busy}
+                      onClick={adminActions.onSetPassword}
+                      className="gap-1.5"
+                    >
+                      <KeyRound className="h-3.5 w-3.5" />
+                      Set password
+                    </Button>
+                  ) : null}
+                  {adminActions.onResetPassword ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={adminActions.busy}
+                      onClick={adminActions.onResetPassword}
+                      className="gap-1.5"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Reset password
+                    </Button>
+                  ) : null}
+                </>
+              ) : null}
+              {adminActions.canDeactivate &&
+              adminActions.status !== 'disabled' &&
+              adminActions.onDeactivate ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={adminActions.busy}
+                  onClick={adminActions.onDeactivate}
+                  className="gap-1.5"
+                >
+                  <UserX className="h-3.5 w-3.5" />
+                  Deactivate
+                </Button>
+              ) : null}
+              {adminActions.canDeactivate &&
+              adminActions.status === 'disabled' &&
+              adminActions.onReactivate ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={adminActions.busy}
+                  onClick={adminActions.onReactivate}
+                  className="gap-1.5"
+                >
+                  <UserCheck className="h-3.5 w-3.5" />
+                  Reactivate
+                </Button>
+              ) : null}
+              {adminActions.canDelete && adminActions.onDelete ? (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={adminActions.busy}
+                  onClick={adminActions.onDelete}
+                  className="gap-1.5"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete permanently
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {/* =========================================================================
             SECTION 2: TAB NAVIGATION (Monthly Attendance vs Projects Delivered)
@@ -411,10 +820,42 @@ export function EmployeeProfileDrawer({
             </button>
           </div>
 
-          {/* Month Selector Controls */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500">Period:</span>
-            <div className="flex items-center gap-1">
+          {/* Month sliding window */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center rounded-xl border border-slate-200 bg-white p-0.5 shadow-2xs">
+              <button
+                type="button"
+                aria-label="Previous month"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                onClick={() => {
+                  const next = shiftPeriod(selectedPeriod, -1);
+                  setSelectedPeriod(next);
+                  setSelectedDay(null);
+                  setSelectedYear(parseInt(next.slice(0, 4), 10));
+                }}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <div className="min-w-[9.5rem] px-2 text-center text-xs font-bold text-slate-900">
+                {periodLabel(selectedPeriod)}
+              </div>
+              <button
+                type="button"
+                aria-label="Next month"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 disabled:opacity-40"
+                disabled={selectedPeriod >= currentPeriod()}
+                onClick={() => {
+                  const next = shiftPeriod(selectedPeriod, 1);
+                  if (next > currentPeriod()) return;
+                  setSelectedPeriod(next);
+                  setSelectedDay(null);
+                  setSelectedYear(parseInt(next.slice(0, 4), 10));
+                }}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="hidden items-center gap-1 sm:flex">
               {pastPeriods.map((p) => (
                 <button
                   key={p.id}
@@ -424,25 +865,26 @@ export function EmployeeProfileDrawer({
                     setSelectedDay(null);
                   }}
                   className={cn(
-                    'rounded-lg px-2.5 py-1 text-xs font-semibold transition border',
+                    'rounded-lg px-2 py-1 text-[11px] font-semibold transition border',
                     selectedPeriod === p.id
                       ? 'bg-teal-50 border-teal-300 text-teal-900 shadow-2xs'
                       : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                   )}
                 >
-                  {p.label}
+                  {p.label.replace(' (Current)', '')}
                 </button>
               ))}
-              <input
-                type="month"
-                value={selectedPeriod}
-                onChange={(e) => {
-                  setSelectedPeriod(e.target.value);
-                  setSelectedDay(null);
-                }}
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-teal-500 focus:outline-none"
-              />
             </div>
+            <input
+              type="month"
+              value={selectedPeriod}
+              max={currentPeriod()}
+              onChange={(e) => {
+                setSelectedPeriod(e.target.value);
+                setSelectedDay(null);
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-teal-500 focus:outline-none"
+            />
           </div>
         </div>
 
@@ -489,19 +931,28 @@ export function EmployeeProfileDrawer({
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
+              <div
+                className={cn(
+                  'rounded-xl border p-4 shadow-2xs',
+                  sundayExtra.minutes > 0
+                    ? 'border-teal-300 bg-teal-50/60'
+                    : 'border-slate-200/80 bg-white'
+                )}
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-500">Tasks Completed</span>
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
-                    <Target className="h-4 w-4" />
+                  <span className="text-xs font-medium text-slate-500">Sunday Extra Work</span>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-100 text-teal-800">
+                    <Sparkles className="h-4 w-4" />
                   </div>
                 </div>
                 <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-slate-900">
-                    {workData?.tasksCompleted ?? 0}
+                  <span className="text-2xl font-bold text-teal-900">
+                    {formatHours(sundayExtra.minutes)}
                   </span>
-                  <span className="text-xs text-slate-500">
-                    / {workData?.tasksTotal ?? 0} assigned
+                  <span className="text-xs text-teal-800/80">
+                    {sundayExtra.days > 0
+                      ? `${sundayExtra.days} Sunday${sundayExtra.days === 1 ? '' : 's'}`
+                      : 'no overtime'}
                   </span>
                 </div>
               </div>
@@ -540,22 +991,45 @@ export function EmployeeProfileDrawer({
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-teal-600" />
                     <h4 className="text-sm font-bold text-slate-900">
-                      Attendance &amp; Activity Heatmap &mdash; {selectedPeriod}
+                      Month window &mdash; {periodLabel(selectedPeriod)}
                     </h4>
                   </div>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Hover and click any day cell to inspect precise check-in, check-out, and active duration.
+                    Sundays off stay dark grey. If someone works Sunday, the cell turns green and counts as
+                    extra work time.
                   </p>
                 </div>
 
                 {/* Legend */}
-                <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                  <span>0 hrs</span>
-                  <div className="h-3 w-3 rounded-xs bg-slate-100 border border-slate-200" title="0h" />
-                  <div className="h-3 w-3 rounded-xs bg-teal-100" title="< 4h" />
-                  <div className="h-3 w-3 rounded-xs bg-teal-300" title="4 - 7h" />
-                  <div className="h-3 w-3 rounded-xs bg-teal-600" title="7h+" />
-                  <span>7h+</span>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-3 w-3 rounded-xs bg-slate-100 border border-slate-200" />
+                    0h
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-3 w-3 rounded-xs bg-teal-100" />
+                    &lt;4h
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-3 w-3 rounded-xs bg-teal-300" />
+                    4–7h
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-3 w-3 rounded-xs bg-teal-600" />
+                    7h+
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-3 w-3 rounded-xs bg-slate-600 border border-slate-700" />
+                    Sunday off
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-3 w-3 rounded-xs bg-teal-500 border border-teal-600" />
+                    Sunday extra
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-3 w-3 rounded-xs bg-amber-200 border border-amber-300" />
+                    Holiday
+                  </span>
                 </div>
               </div>
 
@@ -568,7 +1042,7 @@ export function EmployeeProfileDrawer({
                   <span>Thu</span>
                   <span>Fri</span>
                   <span>Sat</span>
-                  <span>Sun</span>
+                  <span className="text-slate-300">Sun</span>
                 </div>
 
                 <div className="grid grid-cols-7 gap-1.5">
@@ -577,18 +1051,35 @@ export function EmployeeProfileDrawer({
                       return (
                         <div
                           key={`empty-${idx}`}
-                          className="h-16 rounded-xl border border-transparent bg-slate-50/40 opacity-40"
+                          className="h-[4.25rem] rounded-xl border border-transparent bg-slate-50/40 opacity-40"
                         />
                       );
                     }
 
                     const wd = cell.workData;
-                    const mins = wd?.durationMinutes || 0;
+                    const mins = Math.max(wd?.durationMinutes || 0, cell.extraMinutes || 0);
                     const isMissing = wd?.status === 'missing_checkout';
                     const isSelected = selectedDay?.date === cell.dateStr;
+                    const isHoliday = !!cell.holidayName;
+                    const isSunday = cell.isSunday;
+                    const sundayExtraWork = isSunday && mins > 0;
 
                     let bgStyle = 'bg-slate-50 border-slate-200/70 text-slate-500';
-                    if (mins > 0 && !isMissing) {
+                    if (isHoliday && !sundayExtraWork) {
+                      bgStyle = 'bg-amber-100 border-amber-300 text-amber-950';
+                    } else if (sundayExtraWork) {
+                      // Sunday with logged hours → green extra work
+                      if (mins < 240) {
+                        bgStyle = 'bg-teal-50 border-teal-400 text-teal-950 ring-1 ring-teal-200';
+                      } else if (mins < 420) {
+                        bgStyle = 'bg-teal-200 border-teal-500 text-teal-950 ring-1 ring-teal-300';
+                      } else {
+                        bgStyle = 'bg-teal-600 border-teal-700 text-white font-semibold ring-1 ring-teal-400';
+                      }
+                    } else if (isSunday) {
+                      bgStyle =
+                        'bg-slate-600 border-slate-700 text-slate-200 cursor-default shadow-inner';
+                    } else if (mins > 0 && !isMissing) {
                       if (mins < 240) {
                         bgStyle = 'bg-teal-50 border-teal-200 text-teal-900';
                       } else if (mins < 420) {
@@ -597,7 +1088,7 @@ export function EmployeeProfileDrawer({
                         bgStyle = 'bg-teal-600 border-teal-700 text-white font-semibold';
                       }
                     } else if (isMissing) {
-                      bgStyle = 'bg-amber-100 border-amber-300 text-amber-950';
+                      bgStyle = 'bg-orange-100 border-orange-300 text-orange-950';
                     }
 
                     return (
@@ -605,32 +1096,64 @@ export function EmployeeProfileDrawer({
                         key={cell.dateStr}
                         type="button"
                         onClick={() => {
+                          if (isSunday && !isHoliday && mins <= 0) return;
                           const historyMatch = historyData?.items?.find((r) => r.date === cell.dateStr);
                           const resolved: WorkDay = wd || (historyMatch ? {
                             _id: historyMatch._id,
                             date: historyMatch.date,
                             checkInAt: historyMatch.checkInAt,
                             checkOutAt: historyMatch.checkOutAt,
-                            durationMinutes: historyMatch.durationMinutes,
+                            durationMinutes: historyMatch.durationMinutes || mins,
                             status: historyMatch.status,
                             workLog: historyMatch.workLog,
                             notes: historyMatch.notes,
-                          } : { date: cell.dateStr, durationMinutes: 0, status: 'absent' });
+                          } : {
+                            date: cell.dateStr,
+                            durationMinutes: mins,
+                            status: isHoliday ? 'holiday' : sundayExtraWork ? 'checked_out' : isSunday ? 'holiday' : 'absent',
+                          });
                           setSelectedDay(resolved);
                           setShowDayModal(true);
                         }}
                         className={cn(
-                          'group flex h-16 flex-col justify-between rounded-xl border p-2 text-left transition-all hover:scale-[1.02] hover:shadow-xs',
+                          'group flex h-[4.25rem] flex-col justify-between rounded-xl border p-2 text-left transition-all',
+                          (!isSunday || sundayExtraWork) && 'hover:scale-[1.02] hover:shadow-xs',
                           bgStyle,
                           isSelected ? 'ring-2 ring-teal-600 ring-offset-1' : ''
                         )}
+                        title={
+                          sundayExtraWork
+                            ? `Sunday extra work — ${formatHours(mins)}`
+                            : isHoliday
+                              ? cell.holidayName
+                              : isSunday
+                                ? 'Sunday — weekly off'
+                                : undefined
+                        }
                       >
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-bold">{cell.dayNumber}</span>
-                          {isMissing && <AlertCircle className="h-3 w-3 text-amber-700" />}
+                          {sundayExtraWork ? (
+                            <span
+                              className={cn(
+                                'rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide',
+                                mins >= 420 ? 'bg-white/20 text-white' : 'bg-teal-700/10 text-teal-800'
+                              )}
+                            >
+                              Extra
+                            </span>
+                          ) : isMissing && !isHoliday ? (
+                            <AlertCircle className="h-3 w-3 text-amber-700" />
+                          ) : null}
                         </div>
-                        <div className="text-[10px]">
-                          {mins > 0 ? (
+                        <div className="text-[10px] leading-tight">
+                          {isHoliday && !sundayExtraWork ? (
+                            <span className="line-clamp-2 font-semibold">{cell.holidayName}</span>
+                          ) : sundayExtraWork ? (
+                            <span className="font-bold">{formatHours(mins)}</span>
+                          ) : isSunday ? (
+                            <span className="font-semibold tracking-wide text-slate-100">Off</span>
+                          ) : mins > 0 ? (
                             <span>{formatHours(mins)}</span>
                           ) : (
                             <span className="opacity-40">&mdash;</span>
@@ -651,9 +1174,16 @@ export function EmployeeProfileDrawer({
                       <span className="font-bold text-slate-900">{formatDateReadable(selectedDay.date)}</span>
                       <span className="text-slate-600 ml-2">
                         {selectedDay.durationMinutes > 0
-                          ? `Total Logged: ${formatHours(selectedDay.durationMinutes)}`
+                          ? isSundayDateKey(selectedDay.date)
+                            ? `Sunday extra: ${formatHours(selectedDay.durationMinutes)}`
+                            : `Total Logged: ${formatHours(selectedDay.durationMinutes)}`
                           : 'No active session recorded'}
                       </span>
+                      {isSundayDateKey(selectedDay.date) && selectedDay.durationMinutes > 0 ? (
+                        <span className="ml-2 rounded-full bg-teal-700/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-teal-800">
+                          Extra work
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
@@ -708,6 +1238,7 @@ export function EmployeeProfileDrawer({
                     year={selectedYear}
                     onYearChange={setSelectedYear}
                     days={days}
+                    holidays={companyHolidays}
                     summary={summary}
                     onSelectDate={(date) => {
                       const found = (workData?.days || []).find((d) => d.date === date);

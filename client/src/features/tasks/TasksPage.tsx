@@ -9,7 +9,18 @@ import {
   useSensors,
   closestCorners,
 } from '@dnd-kit/core';
-import { Calendar, Clock3, ListTodo, Plus, Paperclip, FileText, Image as ImageIcon } from 'lucide-react';
+import {
+  Calendar,
+  Clock3,
+  ListTodo,
+  Plus,
+  Paperclip,
+  FileText,
+  Image as ImageIcon,
+  MoreVertical,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage, getAuthenticatedFileUrl, isImageFile, isPdfFile } from '@/lib/api';
 import { PageHeader, Card, EmptyState, TableShell } from '@/components/ui/Card';
@@ -76,11 +87,16 @@ export function TasksPage() {
   const [open, setOpen] = useState(false);
   const [issueStack, setIssueStack] = useState<string[]>([]);
   const [cardPreviewFile, setCardPreviewFile] = useState<PreviewFile | null>(null);
+  const [menuTaskId, setMenuTaskId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BoardTask | null>(null);
   const [form, setForm] = useState(emptyForm);
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
   const userId = useAuthStore((s) => s.user?.id);
+  const can = useAuthStore((s) => s.can);
   const canAssign = role === 'ceo';
+  const canWrite = !!role;
+  const canDelete = can('tasks', 'delete') || role === 'ceo';
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const detailId = issueStack[issueStack.length - 1] || null;
@@ -147,12 +163,40 @@ export function TasksPage() {
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
+  const deleteTask = useMutation({
+    mutationFn: async (id: string) => api.delete(`/tasks/${id}`),
+    onSuccess: (_res, id) => {
+      toast.success('Task deleted');
+      setDeleteTarget(null);
+      setMenuTaskId(null);
+      setIssueStack((stack) => {
+        const idx = stack.indexOf(id);
+        if (idx < 0) return stack;
+        return stack.slice(0, idx);
+      });
+      qc.invalidateQueries({ queryKey: ['tasks-board'] });
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
   const flat = useMemo(() => {
     if (!data) return [] as BoardTask[];
     return columns.flatMap((c) => (data[c.id] || []).map((t) => ({ ...t, status: c.id })));
   }, [data]);
 
+  useEffect(() => {
+    if (!menuTaskId) return;
+    const onDoc = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-task-menu]')) return;
+      setMenuTaskId(null);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [menuTaskId]);
+
   function openIssue(id: string) {
+    setMenuTaskId(null);
     setIssueStack([id]);
   }
 
@@ -168,6 +212,68 @@ export function TasksPage() {
 
   function closeIssue() {
     setIssueStack([]);
+  }
+
+  function handleIssueDeleted(id: string) {
+    setIssueStack((stack) => {
+      const idx = stack.indexOf(id);
+      if (idx < 0) return [];
+      return stack.slice(0, idx);
+    });
+    qc.invalidateQueries({ queryKey: ['tasks-board'] });
+  }
+
+  function TaskActionsMenu({ task }: { task: BoardTask }) {
+    if (!canWrite && !canDelete) return null;
+    const open = menuTaskId === task._id;
+    return (
+      <div className="relative" data-task-menu>
+        <button
+          type="button"
+          aria-label="Task actions"
+          className={cn(
+            'inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--fg-muted)] transition hover:bg-[var(--bg)] hover:text-[var(--fg)]',
+            open && 'bg-[var(--bg)] text-[var(--fg)]'
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuTaskId(open ? null : task._id);
+          }}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </button>
+        {open ? (
+          <div
+            className="absolute right-0 top-8 z-20 min-w-[140px] overflow-hidden rounded-xl border border-[var(--border)] bg-white py-1 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {canWrite ? (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={() => openIssue(task._id)}
+              >
+                <Pencil className="h-3.5 w-3.5 text-slate-500" />
+                Edit
+              </button>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                onClick={() => {
+                  setMenuTaskId(null);
+                  setDeleteTarget(task);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   function onDragEnd(event: DragEndEvent) {
@@ -359,9 +465,22 @@ export function TasksPage() {
                           draggable
                           onDragStart={(e) => e.dataTransfer.setData('text/plain', task._id)}
                           onClick={() => openIssue(task._id)}
-                          className="cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-white p-3 shadow-sm transition hover:border-[var(--brand)]/40 hover:shadow-md"
+                          className="group/card relative cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-white p-3 shadow-sm transition hover:border-[var(--brand)]/40 hover:shadow-md"
                         >
-                          <div className="text-sm font-semibold text-[var(--fg)]">{task.title}</div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1 text-sm font-semibold text-[var(--fg)]">{task.title}</div>
+                            <div
+                              className={cn(
+                                'shrink-0 transition',
+                                menuTaskId === task._id
+                                  ? 'opacity-100'
+                                  : 'opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100'
+                              )}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <TaskActionsMenu task={task} />
+                            </div>
+                          </div>
                           <div className="mt-1.5 flex flex-wrap gap-1.5">
                             {task.project?.name ? (
                               <span className="rounded bg-[var(--info-bg)] px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[var(--info)]">
@@ -481,6 +600,7 @@ export function TasksPage() {
                 <th>Deadline</th>
                 <th>Subtasks</th>
                 <th>Attachments</th>
+                <th className="w-24">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -530,6 +650,32 @@ export function TasksPage() {
                     ) : (
                       <span className="text-slate-300 text-xs">—</span>
                     )}
+                  </td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1">
+                      {canWrite ? (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-slate-500"
+                          aria-label="Edit task"
+                          onClick={() => openIssue(t._id)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      ) : null}
+                      {canDelete ? (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-rose-600 hover:bg-rose-50"
+                          aria-label="Delete task"
+                          onClick={() => setDeleteTarget(t)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -662,7 +808,43 @@ export function TasksPage() {
         </div>
       </Modal>
 
-      <TaskIssueModal taskId={detailId} onClose={closeIssue} onOpenTask={openChild} />
+      <TaskIssueModal
+        taskId={detailId}
+        onClose={closeIssue}
+        onOpenTask={openChild}
+        onDeleted={handleIssueDeleted}
+      />
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => !deleteTask.isPending && setDeleteTarget(null)}
+        title="Delete task?"
+        description="This removes the task and its subtasks from the board. This cannot be undone."
+        size="sm"
+        preventDismiss={deleteTask.isPending}
+        footer={
+          <>
+            <Button variant="outline" disabled={deleteTask.isPending} onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={!deleteTarget || deleteTask.isPending}
+              onClick={() => deleteTarget && deleteTask.mutate(deleteTarget._id)}
+            >
+              {deleteTask.isPending ? 'Deleting…' : 'Delete'}
+            </Button>
+          </>
+        }
+      >
+        {deleteTarget ? (
+          <p className="text-sm text-[var(--fg-secondary)]">
+            <span className="font-semibold text-[var(--fg)]">{deleteTarget.key || 'Task'}</span>
+            {` · ${deleteTarget.title}`}
+          </p>
+        ) : null}
+      </Modal>
+
       {cardPreviewFile && (
         <FilePreviewModal file={cardPreviewFile} onClose={() => setCardPreviewFile(null)} />
       )}

@@ -13,6 +13,7 @@ import { Users, User, Eye, EyeOff, KeyRound, Link2, RefreshCw, Check } from 'luc
 import { WorkingTeamsList } from '@/features/teams/components/WorkingTeamsList';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { EmployeeProfileDrawer } from '@/features/attendance/components/EmployeeProfileDrawer';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 
 type UserRow = {
   _id: string;
@@ -225,6 +226,7 @@ export function UsersPage() {
       toast.success('User permanently deleted');
       setDeleteTarget(null);
       setConfirmEmail('');
+      setProfileEmployeeId(null);
       qc.invalidateQueries({ queryKey: ['users'] });
     },
     onError: (e) => toast.error(getErrorMessage(e)),
@@ -247,6 +249,10 @@ export function UsersPage() {
     if (u._id === currentUser?.id) return false;
     return role === 'ceo';
   }
+
+  const profileUser: UserRow | null =
+    (data?.items || []).find((u: UserRow) => u._id === profileEmployeeId) || null;
+  const profileManageable = profileUser ? canManageTarget(profileUser) : false;
 
   return (
     <div>
@@ -308,14 +314,13 @@ export function UsersPage() {
               <th>Designation</th>
               <th>Joined</th>
               <th>Status</th>
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading &&
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`sk-${i}`}>
-                  {Array.from({ length: 8 }).map((__, j) => (
+                  {Array.from({ length: 7 }).map((__, j) => (
                     <td key={j}>
                       <Skeleton className="h-4 w-full" />
                     </td>
@@ -324,12 +329,12 @@ export function UsersPage() {
               ))}
             {!isLoading &&
               (data?.items || []).map((u: UserRow) => {
-              const manageable = canManageTarget(u);
               return (
                 <tr
                   key={u._id}
                   onClick={() => setProfileEmployeeId(u._id)}
                   className="cursor-pointer transition-colors hover:bg-teal-50/40 group"
+                  title="Open employee profile"
                 >
                   <td>
                     <div className="flex items-center gap-3">
@@ -338,7 +343,7 @@ export function UsersPage() {
                         <div className="font-bold text-slate-900 group-hover:text-teal-700 transition flex items-center gap-1.5">
                           <span>{u.name}</span>
                           <span className="text-[10px] text-teal-600 font-normal opacity-0 group-hover:opacity-100 transition">
-                            &bull; View Analytics &rarr;
+                            &bull; Open profile &rarr;
                           </span>
                         </div>
                         <div className="text-xs text-[var(--fg-secondary)]">{u.email}</div>
@@ -353,111 +358,6 @@ export function UsersPage() {
                   <td>{formatDate(u.joiningDate)}</td>
                   <td>
                     <Badge tone={statusTone(u.status)}>{u.status}</Badge>
-                  </td>
-                  <td>
-                    <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setProfileEmployeeId(u._id);
-                        }}
-                        className="border-teal-200 text-teal-800 hover:bg-teal-50"
-                      >
-                        Analytics
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditId(u._id);
-                          setEdit({
-                            phone: u.phone || '',
-                            designation: u.designation || '',
-                            department: u.department || '',
-                            status: u.status === 'disabled' ? 'disabled' : 'active',
-                            employeeId: u.employeeId || '',
-                          });
-                        }}
-                      >
-                        Edit
-                      </Button>
-                      {canResetPassword && manageable && u.status !== 'disabled' ? (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSetPasswordTarget(u);
-                              setPasswordForm({ password: '', confirm: '' });
-                            }}
-                          >
-                            Set password
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={resetPassword.isPending}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (
-                                window.confirm(
-                                  `Generate a temporary password for ${u.name}? Invited users will be activated so they can log in.`
-                                )
-                              ) {
-                                resetPassword.mutate(u._id);
-                              }
-                            }}
-                          >
-                            Reset password
-                          </Button>
-                        </>
-                      ) : null}
-                      {canDelete && manageable && u.status !== 'disabled' ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={deactivateUser.isPending}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm(`Deactivate ${u.name}? They can be reactivated later.`)) {
-                              deactivateUser.mutate(u._id);
-                            }
-                          }}
-                        >
-                          Deactivate
-                        </Button>
-                      ) : null}
-                      {canDelete && manageable && u.status === 'disabled' ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={reactivate.isPending}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            reactivate.mutate(u._id);
-                          }}
-                        >
-                          Reactivate
-                        </Button>
-                      ) : null}
-                      {canDelete && manageable ? (
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteTarget(u);
-                            setConfirmEmail('');
-                          }}
-                        >
-                          Delete permanently
-                        </Button>
-                      ) : null}
-                    </div>
                   </td>
                 </tr>
               );
@@ -954,6 +854,71 @@ export function UsersPage() {
         employeeId={profileEmployeeId}
         onClose={() => setProfileEmployeeId(null)}
         canManage={role === 'ceo' || role === 'manager'}
+        adminActions={
+          profileUser
+            ? {
+                enabled: true,
+                canEdit: true,
+                canResetPassword: canResetPassword && profileManageable,
+                canDeactivate: canDelete && profileManageable,
+                canDelete: canDelete && profileManageable,
+                status: profileUser.status,
+                busy:
+                  resetPassword.isPending ||
+                  setPassword.isPending ||
+                  deactivateUser.isPending ||
+                  reactivate.isPending ||
+                  deleteUser.isPending,
+                onEdit: () => {
+                  setEditId(profileUser._id);
+                  setEdit({
+                    phone: profileUser.phone || '',
+                    designation: profileUser.designation || '',
+                    department: profileUser.department || '',
+                    status: profileUser.status === 'disabled' ? 'disabled' : 'active',
+                    employeeId: profileUser.employeeId || '',
+                  });
+                },
+                onSetPassword: () => {
+                  setSetPasswordTarget(profileUser);
+                  setPasswordForm({ password: '', confirm: '' });
+                },
+                onResetPassword: async () => {
+                  const ok = await confirmDialog({
+                    title: 'Reset password?',
+                    description:
+                      'Generate a temporary password? Invited users will be activated so they can log in.',
+                    detail: (
+                      <span>
+                        <span className="font-semibold text-slate-900">{profileUser.name}</span>
+                        <span className="text-slate-500"> · {profileUser.email}</span>
+                      </span>
+                    ),
+                    confirmLabel: 'Generate password',
+                    tone: 'warning',
+                  });
+                  if (ok) resetPassword.mutate(profileUser._id);
+                },
+                onDeactivate: async () => {
+                  const ok = await confirmDialog({
+                    title: 'Deactivate employee?',
+                    description: 'They can be reactivated later. They will not be able to sign in while disabled.',
+                    detail: (
+                      <span className="font-semibold text-slate-900">{profileUser.name}</span>
+                    ),
+                    confirmLabel: 'Deactivate',
+                    tone: 'warning',
+                  });
+                  if (ok) deactivateUser.mutate(profileUser._id);
+                },
+                onReactivate: () => reactivate.mutate(profileUser._id),
+                onDelete: () => {
+                  setDeleteTarget(profileUser);
+                  setConfirmEmail('');
+                },
+              }
+            : undefined
+        }
       />
     </div>
   );

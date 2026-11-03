@@ -7,6 +7,7 @@ import {
   DEFAULT_INCOME_CATEGORIES,
   DEFAULT_EXPENSE_CATEGORIES,
 } from '../../models/FinanceCategory.js';
+import { DEFAULT_PAYMENT_REQUEST_CATEGORIES } from '../../models/PaymentRequest.js';
 import { AppError, ForbiddenError, NotFoundError } from '../../utils/AppError.js';
 import { writeAudit } from '../../utils/audit.js';
 
@@ -25,6 +26,12 @@ async function ensureDefaultCategories() {
     ...DEFAULT_EXPENSE_CATEGORIES.map((name) => ({
       name,
       type: 'expense' as const,
+      isDefault: true,
+      isActive: true,
+    })),
+    ...DEFAULT_PAYMENT_REQUEST_CATEGORIES.map((name) => ({
+      name,
+      type: 'payment_request' as const,
       isDefault: true,
       isActive: true,
     })),
@@ -61,6 +68,9 @@ router.get(
     const expense = categories
       .filter((c) => c.type === 'expense' && c.isActive)
       .map((c) => c.name);
+    const paymentRequest = categories
+      .filter((c) => c.type === 'payment_request' && c.isActive)
+      .map((c) => c.name);
 
     res.json({
       success: true,
@@ -68,6 +78,9 @@ router.get(
         items: categories,
         income: Array.from(new Set([...DEFAULT_INCOME_CATEGORIES, ...income])),
         expense: Array.from(new Set([...DEFAULT_EXPENSE_CATEGORIES, ...expense])),
+        paymentRequest: Array.from(
+          new Set([...DEFAULT_PAYMENT_REQUEST_CATEGORIES, ...paymentRequest])
+        ),
       },
     });
   })
@@ -85,7 +98,7 @@ router.post(
     const body = z
       .object({
         name: z.string().min(2).max(60).trim(),
-        type: z.enum(['income', 'expense']),
+        type: z.enum(['income', 'expense', 'payment_request']),
       })
       .parse(req.body);
 

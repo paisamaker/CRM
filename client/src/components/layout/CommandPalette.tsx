@@ -14,6 +14,7 @@ const links = [
   { label: 'Leads', to: '/leads' },
   { label: 'Finance Overview', to: '/finance', resource: 'finance_overview' },
   { label: 'Transactions', to: '/finance/transactions' },
+  { label: 'Payment Requests', to: '/finance/payment-requests' },
   { label: 'Bills', to: '/finance/invoices', resource: 'invoices' },
   { label: 'Salary & Payroll', to: '/finance/payroll', resource: 'payroll' },
   { label: 'Approvals', to: '/approvals' },

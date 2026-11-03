@@ -10,6 +10,15 @@ import { AppError, ForbiddenError, NotFoundError } from '../../utils/AppError.js
 import { writeAudit } from '../../utils/audit.js';
 import { companyDateKey } from '../../utils/timezone.js';
 import { paginate } from '../../utils/pagination.js';
+import { getSettings } from '../../models/Settings.js';
+import {
+  countExpectedWorkDays,
+  holidayMapForYear,
+  isExpectedWorkDay,
+  isSunday,
+  parseDateKey,
+  toDateKey,
+} from '../../utils/workCalendar.js';
 
 const router = Router();
 router.use(authenticate);
@@ -421,38 +430,95 @@ router.get(
     const presentToday = await Attendance.countDocuments(presentTodayFilter);
     const currentlyCheckedIn = await Attendance.countDocuments(currentlyCheckedInFilter);
 
+    const settings = await getSettings();
+    const holidayMap = holidayMapForYear(settings.companyHolidays || [], year);
+    const holidays = Array.from(holidayMap.entries()).map(([date, name]) => ({ date, name }));
+
     const now = new Date();
     const isCurrentYear = now.getFullYear() === year;
-    let expectedWorkingDays = 0;
-    const cur = new Date(year, 0, 1);
-    const end = isCurrentYear ? now : new Date(year, 11, 31);
-    while (cur <= end) {
-      const dayOfWeek = cur.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) expectedWorkingDays++;
-      cur.setDate(cur.getDate() + 1);
-    }
+    const rangeStart = new Date(year, 0, 1);
+    const rangeEnd = isCurrentYear ? now : new Date(year, 11, 31);
+    const expectedWorkingDays = countExpectedWorkDays(rangeStart, rangeEnd, holidayMap);
+
+    // Only count attended slots on expected work days (exclude Sundays + holidays)
+    const totalAttendedSlots = records.filter((r) => {
+      if (!['checked_in', 'checked_out', 'corrected'].includes(r.status)) return false;
+      try {
+        return isExpectedWorkDay(parseDateKey(r.date), holidayMap);
+      } catch {
+        return true;
+      }
+    }).length;
+
     const eligibleWorkers = targetUserId ? 1 : Math.max(1, activeEmployeesCount);
     const totalExpectedSlots = Math.max(1, expectedWorkingDays * eligibleWorkers);
-    const totalAttendedSlots = records.filter(
-      (r) => r.status === 'checked_in' || r.status === 'checked_out' || r.status === 'corrected'
-    ).length;
     const attendanceRate = Math.min(100, Math.round((totalAttendedSlots / totalExpectedSlots) * 1000) / 10);
+
+    // Mark holiday days in the map for UI (even without attendance rows)
+    for (const [date, name] of holidayMap) {
+      if (!daysMap[date]) {
+        daysMap[date] = {
+          date,
+          totalMinutes: 0,
+          totalHours: 0,
+          activeEmployees: 0,
+          checkedInCount: 0,
+          missingCheckoutCount: 0,
+          workLogCount: 0,
+          level: 0,
+        };
+      }
+      daysMap[date].isHoliday = true;
+      daysMap[date].holidayName = name;
+      if (!daysMap[date].status) daysMap[date].status = 'holiday';
+    }
+
+    // Tag Sundays for clients that render the year grid
+    const sun = new Date(year, 0, 1);
+    const sunEnd = new Date(year, 11, 31);
+    while (sun <= sunEnd) {
+      if (isSunday(sun)) {
+        const key = toDateKey(sun);
+        if (!daysMap[key]) {
+          daysMap[key] = {
+            date: key,
+            totalMinutes: 0,
+            totalHours: 0,
+            activeEmployees: 0,
+            checkedInCount: 0,
+            missingCheckoutCount: 0,
+            workLogCount: 0,
+            level: 0,
+          };
+        }
+        daysMap[key].isSunday = true;
+        daysMap[key].isNonWorking = true;
+      }
+      sun.setDate(sun.getDate() + 1);
+    }
+    for (const h of holidays) {
+      if (daysMap[h.date]) daysMap[h.date].isNonWorking = true;
+    }
 
     res.json({
       success: true,
       data: {
         year,
         days: daysMap,
+        holidays,
+        workWeek: { offDays: ['sunday'], note: 'Sundays and company holidays are non-working' },
         summary: {
           totalLoggedMinutes: totalMinutes,
           totalLoggedHours: Math.round((totalMinutes / 60) * 10) / 10,
           activeWorkingDays: activeDaysCount,
+          expectedWorkingDays,
           averageHoursPerDay: Math.round((avgMinutesPerDay / 60) * 10) / 10,
           missingCheckouts,
           attendanceRate,
           activeEmployeesCount,
           presentToday,
           currentlyCheckedIn,
+          holidayCount: holidays.length,
         },
         monthlyStats,
       },
@@ -497,6 +563,17 @@ router.get(
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const fromKey = companyDateKey(thirtyDaysAgo);
 
+    const settings = await getSettings();
+    const yearNow = new Date().getFullYear();
+    const holidayMap = new Map<string, string>([
+      ...holidayMapForYear(settings.companyHolidays || [], yearNow),
+      ...holidayMapForYear(settings.companyHolidays || [], yearNow - 1),
+    ]);
+    const expectedInWindow = Math.max(
+      1,
+      countExpectedWorkDays(thirtyDaysAgo, new Date(), holidayMap)
+    );
+
     const periodRecords = await Attendance.find({
       date: { $gte: fromKey, $lte: today },
     }).lean();
@@ -530,7 +607,15 @@ router.get(
           mins = Math.max(1, Math.round((Date.now() - new Date(r.checkInAt).getTime()) / 60000));
         }
         periodMinutes += mins;
-        if (mins > 0 || r.status === 'checked_in' || r.status === 'checked_out') {
+        // Count presence only on expected work days (skip Sunday / holiday)
+        const onWorkDay = (() => {
+          try {
+            return isExpectedWorkDay(parseDateKey(r.date), holidayMap);
+          } catch {
+            return true;
+          }
+        })();
+        if (onWorkDay && (mins > 0 || r.status === 'checked_in' || r.status === 'checked_out')) {
           activeDays += 1;
         }
         if (r.status === 'missing_checkout') missingCheckouts += 1;
@@ -574,7 +659,7 @@ router.get(
         periodHours: Math.round((periodMinutes / 60) * 10) / 10,
         activeDays,
         missingCheckouts,
-        attendanceRate: Math.min(100, Math.round((activeDays / 22) * 100)),
+        attendanceRate: Math.min(100, Math.round((activeDays / expectedInWindow) * 100)),
         recentSparkline,
       };
     });

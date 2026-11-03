@@ -33,6 +33,7 @@ import categoryRoutes from './categoryRoutes.js';
 import billRoutes from './billRoutes.js';
 import salaryRoutes from './salaryRoutes.js';
 import documentRoutes from './documentRoutes.js';
+import paymentRequestRoutes from './paymentRequestRoutes.js';
 import {
   startOfDay,
   endOfDay,
@@ -58,6 +59,7 @@ router.use('/categories', categoryRoutes);
 router.use('/bills', billRoutes);
 router.use('/salaries', salaryRoutes);
 router.use('/documents', documentRoutes);
+router.use('/payment-requests', paymentRequestRoutes);
 
 export function parseFlexibleDate(val: unknown): Date | null {
   if (!val) return null;
@@ -505,9 +507,32 @@ router.post(
   })
 );
 
+function isTransactionOwner(
+  tx: { createdBy?: { toString(): string } | string },
+  userId: string
+) {
+  return String(tx.createdBy || '') === userId;
+}
+
+/** Staff may edit/delete own drafts/pending/rejected bills until CEO approval posts them. */
+function assertCanMutateTransaction(
+  tx: { status: string; createdBy?: { toString(): string } | string },
+  user: { id: string; role: string },
+  action: 'update' | 'delete'
+) {
+  if (['ceo', 'finance'].includes(user.role)) return;
+  if (['draft', 'pending', 'rejected'].includes(tx.status) && isTransactionOwner(tx, user.id)) {
+    return;
+  }
+  throw new ForbiddenError(
+    action === 'delete'
+      ? 'Only draft, pending, or rejected bills you submitted can be deleted before CEO approval'
+      : 'Only draft, pending, or rejected bills you submitted can be edited before CEO approval'
+  );
+}
+
 router.patch(
   '/transactions/:id',
-  requireRoles('ceo'),
   authorize('transactions', 'update'),
   asyncHandler(async (req, res) => {
     const body = z
@@ -539,6 +564,7 @@ router.patch(
       .parse(req.body);
     const existing = await Transaction.findById(req.params.id);
     if (!existing) throw new NotFoundError('Transaction not found');
+    assertCanMutateTransaction(existing, req.user!, 'update');
 
     // Approved/paid amounts cannot be silently changed — require CEO + reapproval path
     if (['approved', 'paid'].includes(existing.status)) {
@@ -554,6 +580,15 @@ router.patch(
       }
     }
 
+    // Staff cannot self-approve via PATCH
+    if (
+      !['ceo', 'finance'].includes(req.user!.role) &&
+      body.status &&
+      ['approved', 'paid'].includes(body.status)
+    ) {
+      throw new ForbiddenError('CEO approval is required to mark this bill approved');
+    }
+
     if (body.amount != null) body.amount = roundMoney(body.amount);
 
     const updateData: any = { ...body };
@@ -566,6 +601,30 @@ router.patch(
     if (updateData.employee !== undefined && updateData.employee?.trim() === '') updateData.employee = null;
 
     const tx = await Transaction.findByIdAndUpdate(req.params.id, updateData, { new: true });
+
+    // Keep pending approval request in sync with bill edits
+    if (existing.status === 'pending' && (existing.approval || tx?.approval)) {
+      const approvalId = String(existing.approval || tx?.approval);
+      const approvalPatch: Record<string, unknown> = {
+        $push: {
+          history: {
+            action: 'updated_by_requester',
+            by: req.user!.id,
+            at: new Date(),
+            note: 'Bill details updated while awaiting CEO approval',
+          },
+        },
+      };
+      if (body.amount != null) approvalPatch.amount = body.amount;
+      if (body.title || body.category || body.notes) {
+        const titleBit = body.title?.trim() || tx?.title || existing.title || existing.category;
+        const cat = body.category || tx?.category || existing.category;
+        approvalPatch.title = `${cat}: ${titleBit}`;
+      }
+      if (body.notes !== undefined) approvalPatch.description = body.notes || undefined;
+      await Approval.findByIdAndUpdate(approvalId, approvalPatch).catch(() => null);
+    }
+
     await writeAudit({
       actor: req.user!.id,
       action: 'update',
@@ -581,11 +640,20 @@ router.patch(
 
 router.delete(
   '/transactions/:id',
-  requireRoles('ceo'),
   authorize('transactions', 'delete'),
   asyncHandler(async (req, res) => {
     const existing = await Transaction.findById(req.params.id);
     if (!existing) throw new NotFoundError('Transaction not found');
+    assertCanMutateTransaction(existing, req.user!, 'delete');
+
+    // Staff cannot delete posted ledger entries
+    if (
+      !['ceo', 'finance'].includes(req.user!.role) &&
+      ['approved', 'paid'].includes(existing.status)
+    ) {
+      throw new ForbiddenError('Approved transactions can only be removed by CEO/finance');
+    }
+
     // Reverse bank impact for posted income/expense before hard delete
     if (
       ['approved', 'paid'].includes(existing.status) &&
@@ -602,6 +670,33 @@ router.delete(
       });
       memoryCache.delPrefix('finance');
     }
+
+    // Withdraw pending approval when the bill is deleted before CEO decides
+    if (existing.approval || existing.status === 'pending') {
+      await Approval.updateMany(
+        {
+          $or: [
+            ...(existing.approval ? [{ _id: existing.approval }] : []),
+            { refModel: 'Transaction', refId: existing._id, status: 'pending' },
+          ],
+        },
+        {
+          status: 'rejected',
+          reason: 'Withdrawn — bill deleted by requester before CEO approval',
+          decidedBy: req.user!.id,
+          decidedAt: new Date(),
+          $push: {
+            history: {
+              action: 'withdrawn',
+              by: req.user!.id,
+              at: new Date(),
+              note: 'Transaction deleted while pending approval',
+            },
+          },
+        }
+      ).catch(() => null);
+    }
+
     await Transaction.findByIdAndDelete(req.params.id);
     await writeAudit({
       actor: req.user!.id,

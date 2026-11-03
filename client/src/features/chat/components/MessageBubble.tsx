@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import { formatChatTime, formatFileSize, linkifyText, resolveChatMediaUrl } from '../chatUtils';
 import type { Message } from '../types';
 
@@ -512,10 +513,14 @@ export function MessageBubble({
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-2 text-rose-600 hover:bg-rose-50"
-                  onClick={() => {
-                    if (window.confirm('Delete this message for everyone?')) {
-                      onDelete?.(message._id, 'everyone');
-                    }
+                  onClick={async () => {
+                    const ok = await confirmDialog({
+                      title: 'Delete message for everyone?',
+                      description: 'This removes the message for all participants in the chat.',
+                      confirmLabel: 'Delete for everyone',
+                      tone: 'danger',
+                    });
+                    if (ok) onDelete?.(message._id, 'everyone');
                     setMenuOpen(false);
                   }}
                 >

@@ -27,18 +27,30 @@ export interface DayHeatmapData {
   };
   notes?: string;
   recordId?: string;
+  isHoliday?: boolean;
+  holidayName?: string;
+  isSunday?: boolean;
+  isNonWorking?: boolean;
+}
+
+export interface CompanyHoliday {
+  date: string;
+  name: string;
+  recurring?: boolean;
 }
 
 export interface HeatmapSummary {
   totalLoggedMinutes: number;
   totalLoggedHours: number;
   activeWorkingDays: number;
+  expectedWorkingDays?: number;
   averageHoursPerDay: number;
   missingCheckouts: number;
   presentToday: number;
   currentlyCheckedIn?: number;
   activeEmployeesCount: number;
   attendanceRate: number;
+  holidayCount?: number;
   monthlyStats: {
     month: string;
     monthIndex: number;
@@ -51,6 +63,8 @@ export interface HeatmapSummary {
 export interface HeatmapResponse {
   year: number;
   days: Record<string, DayHeatmapData>;
+  holidays?: CompanyHoliday[];
+  workWeek?: { offDays: string[]; note?: string };
   summary: HeatmapSummary;
 }
 

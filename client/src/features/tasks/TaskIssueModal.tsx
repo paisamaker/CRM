@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft,
   MessageSquare,
-  Paperclip,
   Plus,
   X,
   Clock3,
@@ -13,6 +12,10 @@ import {
   CheckCircle2,
   Tag,
   User,
+  Save,
+  ArrowRightLeft,
+  GitMerge,
+  FolderPen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '@/lib/api';
@@ -23,6 +26,7 @@ import { Input, Label, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { cn, formatDate, formatDateTime } from '@/lib/utils';
 import { AttachmentsSection, type AttachmentItem } from '@/components/files/AttachmentsSection';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 
 const STATUS_OPTIONS = [
   { id: 'todo', label: 'To Do' },
@@ -141,19 +145,34 @@ type Props = {
   taskId: string | null;
   onClose: () => void;
   onOpenTask: (id: string) => void;
+  /** Called after a successful delete so the board can pop the issue stack */
+  onDeleted?: (id: string) => void;
 };
 
-export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
+export function TaskIssueModal({ taskId, onClose, onOpenTask, onDeleted }: Props) {
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
+  const can = useAuthStore((s) => s.can);
   const canAssign = role === 'ceo' || role === 'manager';
   const canWrite = !!role;
+  const canDelete = can('tasks', 'delete') || role === 'ceo';
 
   const [editTitle, setEditTitle] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [comment, setComment] = useState('');
   const [addOpen, setAddOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [shiftOpen, setShiftOpen] = useState(false);
+  const [renameProjectOpen, setRenameProjectOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [shiftProjectId, setShiftProjectId] = useState('');
+  const [projectNameDraft, setProjectNameDraft] = useState('');
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [mergeSourceIds, setMergeSourceIds] = useState<string[]>([]);
+  const [mergeNewName, setMergeNewName] = useState('');
+  const [editingSubId, setEditingSubId] = useState<string | null>(null);
+  const [editingSubTitle, setEditingSubTitle] = useState('');
   const [subsCollapsed, setSubsCollapsed] = useState(false);
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -179,6 +198,21 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
     enabled: addOpen || canAssign,
   });
 
+  const { data: projectsData } = useQuery({
+    queryKey: ['projects-task-move'],
+    queryFn: async () =>
+      (await api.get('/projects', { params: { limit: 100 } })).data.data.items as Array<{
+        _id: string;
+        name: string;
+      }>,
+    enabled: !!taskId && canWrite,
+  });
+  const projectOptions = projectsData || [];
+  const isSubtask = !!(task?.parentTask || task?.issueType === 'subtask');
+  const canMoveProject = canWrite; // parent tasks and subtasks can both be shifted
+  const canManageProjects = role === 'ceo' || can('projects', 'update');
+  const [shiftSubtaskId, setShiftSubtaskId] = useState<string | null>(null);
+
   useEffect(() => {
     if (!task) return;
     setTitle(task.title);
@@ -189,18 +223,41 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
     if (!taskId) return;
     document.body.classList.add('modal-open');
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !addOpen) onClose();
+      if (
+        e.key === 'Escape' &&
+        !addOpen &&
+        !deleteOpen &&
+        !shiftOpen &&
+        !renameProjectOpen &&
+        !mergeOpen
+      ) {
+        onClose();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => {
       document.body.classList.remove('modal-open');
       window.removeEventListener('keydown', onKey);
     };
-  }, [taskId, addOpen, onClose]);
+  }, [taskId, addOpen, deleteOpen, shiftOpen, renameProjectOpen, mergeOpen, onClose]);
+
+  useEffect(() => {
+    setDeleteOpen(false);
+    setShiftOpen(false);
+    setShiftSubtaskId(null);
+    setRenameProjectOpen(false);
+    setMergeOpen(false);
+    setEditingSubId(null);
+    setEditingSubTitle('');
+    setEditTitle(false);
+  }, [taskId]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['task-detail', taskId] });
     qc.invalidateQueries({ queryKey: ['tasks-board'] });
+    qc.invalidateQueries({ queryKey: ['tasks'] });
+    qc.invalidateQueries({ queryKey: ['projects'] });
+    qc.invalidateQueries({ queryKey: ['projects-task-move'] });
   };
 
   const patch = useMutation({
@@ -209,6 +266,55 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
       toast.success('Task updated');
       invalidate();
       setEditTitle(false);
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  const shiftTask = useMutation({
+    mutationFn: async ({ id, projectId }: { id: string; projectId: string }) =>
+      api.patch(`/tasks/${id}`, { project: projectId }),
+    onSuccess: (_data, vars) => {
+      const wasSub = !!shiftSubtaskId || isSubtask;
+      toast.success(
+        wasSub
+          ? 'Subtask shifted to the selected project (now a standalone task)'
+          : 'Task shifted to the selected project'
+      );
+      setShiftOpen(false);
+      setShiftSubtaskId(null);
+      invalidate();
+      if (vars.id !== taskId) {
+        qc.invalidateQueries({ queryKey: ['task-detail', vars.id] });
+      }
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  const renameProject = useMutation({
+    mutationFn: async () =>
+      api.patch(`/projects/${task!.project!._id}`, { name: projectNameDraft.trim() }),
+    onSuccess: () => {
+      toast.success('Project renamed');
+      setRenameProjectOpen(false);
+      invalidate();
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  const mergeProjects = useMutation({
+    mutationFn: async () =>
+      (
+        await api.post(`/projects/${mergeTargetId}/merge`, {
+          sourceIds: mergeSourceIds,
+          newName: mergeNewName.trim() || undefined,
+        })
+      ).data,
+    onSuccess: (res) => {
+      const moved = res?.data?.merged?.tasksMoved ?? 0;
+      toast.success(`Projects merged — ${moved} task(s) moved`);
+      setMergeOpen(false);
+      setMergeSourceIds([]);
+      invalidate();
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
@@ -280,6 +386,42 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
       toast.success('Attachment removed');
       invalidate();
       qc.invalidateQueries({ queryKey: ['files'] });
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  const deleteTask = useMutation({
+    mutationFn: async (id: string) => api.delete(`/tasks/${id}`),
+    onSuccess: (_res, id) => {
+      const parentLike = task?.issueType !== 'subtask' && !task?.parentTask;
+      toast.success(parentLike ? 'Task deleted' : 'Subtask deleted');
+      setDeleteOpen(false);
+      qc.invalidateQueries({ queryKey: ['tasks-board'] });
+      if (task?.parentTask?._id) {
+        qc.invalidateQueries({ queryKey: ['task-detail', task.parentTask._id] });
+      }
+      onDeleted?.(id);
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  const patchSubtask = useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      api.patch(`/tasks/${id}`, body),
+    onSuccess: () => {
+      toast.success('Subtask updated');
+      setEditingSubId(null);
+      setEditingSubTitle('');
+      invalidate();
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  const deleteSubtask = useMutation({
+    mutationFn: async (id: string) => api.delete(`/tasks/${id}`),
+    onSuccess: () => {
+      toast.success('Subtask deleted');
+      invalidate();
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
@@ -369,7 +511,7 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
               )}
 
               {/* Header Action Bar */}
-              <div className="mt-2.5 flex items-center gap-2">
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -389,7 +531,9 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploadAttachments.isPending}
                 >
-                  <Paperclip className="h-3.5 w-3.5 text-slate-500" />
+                  <span className="flex h-4 w-4 items-center justify-center rounded-md bg-slate-200 text-[10px] font-bold leading-none text-slate-700">
+                    A
+                  </span>
                   <span>Attach</span>
                   {(task?.attachments || []).length > 0 && (
                     <span className="rounded-full bg-slate-100 px-1.5 py-0.2 text-[10px] font-bold text-slate-600">
@@ -403,8 +547,104 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                     className="gap-1.5 rounded-xl bg-teal-700 text-xs font-semibold text-white hover:bg-teal-800 shadow-2xs"
                     onClick={() => setAddOpen(true)}
                   >
-                    <Plus className="h-3.5 w-3.5" />
+                    <span className="flex h-4 w-4 items-center justify-center rounded-md bg-teal-500 text-[10px] font-bold leading-none text-white">
+                      +
+                    </span>
                     <span>Add child issue</span>
+                  </Button>
+                ) : null}
+                {canWrite ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 rounded-xl border-indigo-200 bg-indigo-50 text-xs font-semibold text-indigo-800 hover:bg-indigo-100 shadow-2xs"
+                    onClick={() => {
+                      setTitle(task?.title || '');
+                      setEditTitle(true);
+                    }}
+                    disabled={!task}
+                    title="Rename this task"
+                  >
+                    <span className="flex h-4 w-4 items-center justify-center rounded-md bg-indigo-200/90 text-[10px] font-bold leading-none text-indigo-900">
+                      T
+                    </span>
+                    <span>Rename task</span>
+                  </Button>
+                ) : null}
+                {canMoveProject ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 rounded-xl border-sky-200 bg-sky-50 text-xs font-semibold text-sky-800 hover:bg-sky-100 shadow-2xs"
+                    onClick={() => {
+                      setShiftSubtaskId(isSubtask ? taskId : null);
+                      setShiftProjectId(task?.project?._id || '');
+                      setShiftOpen(true);
+                    }}
+                    disabled={!task}
+                    title={
+                      isSubtask
+                        ? 'Shift this subtask to another project (becomes a standalone task)'
+                        : 'Move task to another project'
+                    }
+                  >
+                    <span className="flex h-4 w-4 items-center justify-center rounded-md bg-sky-200/90 text-[10px] font-bold leading-none text-sky-900">
+                      S
+                    </span>
+                    <span>{isSubtask ? 'Shift subtask' : 'Shift project'}</span>
+                  </Button>
+                ) : null}
+                {canManageProjects && task?.project?._id ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 rounded-xl border-amber-200 bg-amber-50 text-xs font-semibold text-amber-900 hover:bg-amber-100 shadow-2xs"
+                    onClick={() => {
+                      setProjectNameDraft(task.project?.name || '');
+                      setRenameProjectOpen(true);
+                    }}
+                    title="Rename the project this task belongs to"
+                  >
+                    <span className="flex h-4 w-4 items-center justify-center rounded-md bg-amber-200/90 text-[10px] font-bold leading-none text-amber-950">
+                      P
+                    </span>
+                    <span>Rename project</span>
+                  </Button>
+                ) : null}
+                {canManageProjects && projectOptions.length >= 2 ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 rounded-xl border-violet-200 bg-violet-50 text-xs font-semibold text-violet-900 hover:bg-violet-100 shadow-2xs"
+                    onClick={() => {
+                      const current = task?.project?._id || projectOptions[0]?._id || '';
+                      setMergeTargetId(current);
+                      setMergeNewName(
+                        projectOptions.find((p) => p._id === current)?.name || task?.project?.name || ''
+                      );
+                      setMergeSourceIds([]);
+                      setMergeOpen(true);
+                    }}
+                    title="Merge multiple projects into one"
+                  >
+                    <span className="flex h-4 w-4 items-center justify-center rounded-md bg-violet-200/90 text-[10px] font-bold leading-none text-violet-950">
+                      M
+                    </span>
+                    <span>Merge projects</span>
+                  </Button>
+                ) : null}
+                {canDelete ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 rounded-xl border-rose-200 bg-white text-xs font-semibold text-rose-700 hover:bg-rose-50 shadow-2xs"
+                    onClick={() => setDeleteOpen(true)}
+                    disabled={!task || deleteTask.isPending}
+                  >
+                    <span className="flex h-4 w-4 items-center justify-center rounded-md bg-rose-200/90 text-[10px] font-bold leading-none text-rose-900">
+                      D
+                    </span>
+                    <span>Delete</span>
                   </Button>
                 ) : null}
               </div>
@@ -520,12 +760,31 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                       {/* Assignee Card */}
                       <div className="rounded-xl border border-slate-200/90 bg-white p-2.5 shadow-2xs transition hover:border-slate-300">
                         <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Assignee</div>
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <Avatar person={task?.assignees?.[0]} size="sm" />
-                          <span className="truncate text-xs font-bold text-slate-800">
-                            {task?.assignees?.map((a) => a.name).join(', ') || 'Unassigned'}
-                          </span>
-                        </div>
+                        {canAssign ? (
+                          <Select
+                            className="h-7 w-full cursor-pointer border-0 bg-transparent p-0 text-xs font-bold text-slate-800 focus:ring-0"
+                            value={task?.assignees?.[0]?._id || ''}
+                            onChange={(e) =>
+                              patch.mutate({
+                                assignees: e.target.value ? [e.target.value] : [],
+                              })
+                            }
+                          >
+                            <option value="">Unassigned</option>
+                            {(users || []).map((u) => (
+                              <option key={u._id} value={u._id}>
+                                {u.name}
+                              </option>
+                            ))}
+                          </Select>
+                        ) : (
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Avatar person={task?.assignees?.[0]} size="sm" />
+                            <span className="truncate text-xs font-bold text-slate-800">
+                              {task?.assignees?.map((a) => a.name).join(', ') || 'Unassigned'}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -616,6 +875,7 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                             {(task.subtasks || []).map((s) => {
                               const assignee = s.assignees?.[0];
                               const done = s.status === 'completed';
+                              const isEditing = editingSubId === s._id;
                               return (
                                 <div
                                   key={s._id}
@@ -633,31 +893,81 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                                         })
                                       }
                                     />
-                                    <button
-                                      type="button"
-                                      className="min-w-0 flex-1 text-left"
-                                      onClick={() => onOpenTask(s._id)}
-                                    >
-                                      <div className="flex flex-wrap items-center gap-1.5">
-                                        {s.key ? (
-                                          <span className="font-mono text-[11px] font-semibold text-[var(--fg-muted)]">
-                                            {s.key}
+                                    {isEditing ? (
+                                      <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+                                        <Input
+                                          value={editingSubTitle}
+                                          onChange={(e) => setEditingSubTitle(e.target.value)}
+                                          className="h-8 text-sm"
+                                          autoFocus
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && editingSubTitle.trim()) {
+                                              patchSubtask.mutate({
+                                                id: s._id,
+                                                body: { title: editingSubTitle.trim() },
+                                              });
+                                            }
+                                            if (e.key === 'Escape') {
+                                              setEditingSubId(null);
+                                              setEditingSubTitle('');
+                                            }
+                                          }}
+                                        />
+                                        <div className="flex gap-1">
+                                          <Button
+                                            size="sm"
+                                            className="h-8 gap-1 px-2"
+                                            disabled={!editingSubTitle.trim() || patchSubtask.isPending}
+                                            onClick={() =>
+                                              patchSubtask.mutate({
+                                                id: s._id,
+                                                body: { title: editingSubTitle.trim() },
+                                              })
+                                            }
+                                          >
+                                            <Save className="h-3.5 w-3.5" />
+                                            Save
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8 px-2"
+                                            onClick={() => {
+                                              setEditingSubId(null);
+                                              setEditingSubTitle('');
+                                            }}
+                                          >
+                                            Cancel
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="min-w-0 flex-1 text-left"
+                                        onClick={() => onOpenTask(s._id)}
+                                      >
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          {s.key ? (
+                                            <span className="font-mono text-[11px] font-semibold text-[var(--fg-muted)]">
+                                              {s.key}
+                                            </span>
+                                          ) : null}
+                                          <span
+                                            className={cn(
+                                              'break-words text-sm font-medium text-[var(--fg)]',
+                                              done && 'text-[var(--fg-muted)] line-through'
+                                            )}
+                                          >
+                                            {s.title}
                                           </span>
-                                        ) : null}
-                                        <span
-                                          className={cn(
-                                            'break-words text-sm font-medium text-[var(--fg)]',
-                                            done && 'text-[var(--fg-muted)] line-through'
-                                          )}
-                                        >
-                                          {s.title}
-                                        </span>
-                                      </div>
-                                      <div className="mt-0.5 text-[11px] text-[var(--fg-muted)]">
-                                        {assignee?.name ? `Assigned to ${assignee.name}` : 'Unassigned'}
-                                        {s.dueDate ? ` · Due ${formatDate(s.dueDate)}` : ''}
-                                      </div>
-                                    </button>
+                                        </div>
+                                        <div className="mt-0.5 text-[11px] text-[var(--fg-muted)]">
+                                          {assignee?.name ? `Assigned to ${assignee.name}` : 'Unassigned'}
+                                          {s.dueDate ? ` · Due ${formatDate(s.dueDate)}` : ''}
+                                        </div>
+                                      </button>
+                                    )}
                                   </div>
                                   <div className="flex items-center justify-between gap-2 pl-6 sm:justify-end sm:pl-0">
                                     <div className="flex items-center gap-1.5">
@@ -678,6 +988,73 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                                         </option>
                                       ))}
                                     </Select>
+                                    {canMoveProject && !isEditing ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8 shrink-0 gap-1 rounded-xl border-sky-200 bg-sky-50 px-2 text-[11px] font-semibold text-sky-800 hover:bg-sky-100 shadow-2xs"
+                                        aria-label="Shift subtask to another project"
+                                        title="Shift subtask to another project"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setShiftSubtaskId(s._id);
+                                          setShiftProjectId(task?.project?._id || '');
+                                          setShiftOpen(true);
+                                        }}
+                                      >
+                                        <span className="flex h-4 w-4 items-center justify-center rounded-md bg-sky-200/90 text-[10px] font-bold leading-none text-sky-900">
+                                          S
+                                        </span>
+                                        <span>Shift</span>
+                                      </Button>
+                                    ) : null}
+                                    {canWrite && !isEditing ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8 shrink-0 gap-1 rounded-xl border-indigo-200 bg-indigo-50 px-2 text-[11px] font-semibold text-indigo-800 hover:bg-indigo-100 shadow-2xs"
+                                        aria-label="Edit subtask"
+                                        title="Rename subtask"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingSubId(s._id);
+                                          setEditingSubTitle(s.title);
+                                        }}
+                                      >
+                                        <span className="flex h-4 w-4 items-center justify-center rounded-md bg-indigo-200/90 text-[10px] font-bold leading-none text-indigo-900">
+                                          T
+                                        </span>
+                                        <span className="hidden sm:inline">Rename</span>
+                                      </Button>
+                                    ) : null}
+                                    {canDelete && !isEditing ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8 shrink-0 gap-1 rounded-xl border-rose-200 bg-rose-50 px-2 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 shadow-2xs"
+                                        aria-label="Delete subtask"
+                                        title="Delete subtask"
+                                        disabled={deleteSubtask.isPending}
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          const ok = await confirmDialog({
+                                            title: 'Delete subtask?',
+                                            description: 'This removes the subtask permanently. This cannot be undone.',
+                                            detail: (
+                                              <span className="font-semibold text-slate-900">{s.title}</span>
+                                            ),
+                                            confirmLabel: 'Delete',
+                                            tone: 'danger',
+                                          });
+                                          if (ok) deleteSubtask.mutate(s._id);
+                                        }}
+                                      >
+                                        <span className="flex h-4 w-4 items-center justify-center rounded-md bg-rose-200/90 text-[10px] font-bold leading-none text-rose-900">
+                                          D
+                                        </span>
+                                        <span className="hidden sm:inline">Delete</span>
+                                      </Button>
+                                    ) : null}
                                   </div>
                                 </div>
                               );
@@ -818,9 +1195,32 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                     </button>
                     {mobileDetailsOpen && (
                       <div className="mt-3 space-y-2.5 border-t border-slate-100 pt-3 text-xs">
-                        <div className="flex items-center justify-between">
+                        <div className="space-y-1">
                           <span className="text-slate-400">Project:</span>
-                          <span className="font-semibold text-slate-800">{task?.project?.name || '—'}</span>
+                          {canMoveProject ? (
+                            <Select
+                              className="h-8 text-xs font-semibold"
+                              value={task?.project?._id || ''}
+                              disabled={!task || shiftTask.isPending}
+                              onChange={(e) => {
+                                const next = e.target.value;
+                                if (!next || next === task?.project?._id) return;
+                                setShiftSubtaskId(isSubtask ? taskId : null);
+                                shiftTask.mutate({ id: taskId!, projectId: next });
+                              }}
+                            >
+                              <option value="" disabled>
+                                Select project…
+                              </option>
+                              {projectOptions.map((p) => (
+                                <option key={p._id} value={p._id}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </Select>
+                          ) : (
+                            <span className="font-semibold text-slate-800">{task?.project?.name || '—'}</span>
+                          )}
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-400">Parent Task:</span>
@@ -870,10 +1270,32 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                   </div>
                   <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3.5 text-sm shadow-2xs">
                     <DetailRow label="Assignee">
-                      <div className="flex items-center gap-2">
-                        <Avatar person={task?.assignees?.[0]} />
-                        <span className="font-medium text-slate-800 truncate">{task?.assignees?.map((a) => a.name).join(', ') || 'Unassigned'}</span>
-                      </div>
+                      {canAssign ? (
+                        <Select
+                          className="h-8 text-xs font-semibold"
+                          value={task?.assignees?.[0]?._id || ''}
+                          disabled={!task}
+                          onChange={(e) =>
+                            patch.mutate({
+                              assignees: e.target.value ? [e.target.value] : [],
+                            })
+                          }
+                        >
+                          <option value="">Unassigned</option>
+                          {(users || []).map((u) => (
+                            <option key={u._id} value={u._id}>
+                              {u.name}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Avatar person={task?.assignees?.[0]} />
+                          <span className="font-medium text-slate-800 truncate">
+                            {task?.assignees?.map((a) => a.name).join(', ') || 'Unassigned'}
+                          </span>
+                        </div>
+                      )}
                     </DetailRow>
                     <DetailRow label="Reporter">
                       <div className="flex items-center gap-2">
@@ -899,7 +1321,32 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
                     </DetailRow>
                     <DetailRow label="Start">{formatDate(task?.startDate)}</DetailRow>
                     <DetailRow label="Due">{formatDate(task?.dueDate)}</DetailRow>
-                    <DetailRow label="Project">{task?.project?.name || '—'}</DetailRow>
+                    <DetailRow label="Project">
+                      {canMoveProject ? (
+                        <Select
+                          className="h-8 text-xs font-semibold"
+                          value={task?.project?._id || ''}
+                          disabled={!task || patch.isPending || shiftTask.isPending}
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            if (!next || next === task?.project?._id) return;
+                            setShiftSubtaskId(isSubtask ? taskId : null);
+                            shiftTask.mutate({ id: taskId!, projectId: next });
+                          }}
+                        >
+                          <option value="" disabled>
+                            Select project…
+                          </option>
+                          {projectOptions.map((p) => (
+                            <option key={p._id} value={p._id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <span className="font-medium text-slate-800">{task?.project?.name || '—'}</span>
+                      )}
+                    </DetailRow>
                     <DetailRow label="Parent">
                       {task?.parentTask ? (
                         <button
@@ -939,6 +1386,246 @@ export function TaskIssueModal({ taskId, onClose, onOpenTask }: Props) {
           </div>
         </div>
       </div>
+
+      <Modal
+        open={deleteOpen}
+        onClose={() => !deleteTask.isPending && setDeleteOpen(false)}
+        title={isParent ? 'Delete task?' : 'Delete subtask?'}
+        description={
+          isParent
+            ? 'This removes the parent task and all of its subtasks from the board. This cannot be undone.'
+            : 'This removes the subtask permanently. This cannot be undone.'
+        }
+        size="sm"
+        preventDismiss={deleteTask.isPending}
+        footer={
+          <>
+            <Button variant="outline" disabled={deleteTask.isPending} onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={!taskId || deleteTask.isPending}
+              onClick={() => taskId && deleteTask.mutate(taskId)}
+            >
+              {deleteTask.isPending ? 'Deleting…' : 'Delete'}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-[var(--fg-secondary)]">
+          <span className="font-semibold text-[var(--fg)]">{task?.key || 'Issue'}</span>
+          {task?.title ? ` · ${task.title}` : ''}
+        </p>
+      </Modal>
+
+      <Modal
+        open={shiftOpen}
+        onClose={() => {
+          if (shiftTask.isPending) return;
+          setShiftOpen(false);
+          setShiftSubtaskId(null);
+        }}
+        title={shiftSubtaskId || isSubtask ? 'Shift subtask to another project' : 'Shift task to another project'}
+        description={
+          shiftSubtaskId || isSubtask
+            ? 'Moves this subtask into the selected project and converts it into a standalone task.'
+            : 'Move this task (and its subtasks) into a different project.'
+        }
+        size="sm"
+        preventDismiss={shiftTask.isPending}
+        footer={
+          <>
+            <Button
+              variant="outline"
+              disabled={shiftTask.isPending}
+              onClick={() => {
+                setShiftOpen(false);
+                setShiftSubtaskId(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                !shiftProjectId ||
+                shiftProjectId === task?.project?._id ||
+                shiftTask.isPending ||
+                !(shiftSubtaskId || taskId)
+              }
+              onClick={() =>
+                shiftTask.mutate({
+                  id: shiftSubtaskId || taskId!,
+                  projectId: shiftProjectId,
+                })
+              }
+              className="gap-1.5"
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" />
+              {shiftTask.isPending
+                ? 'Shifting…'
+                : shiftSubtaskId || isSubtask
+                  ? 'Shift subtask'
+                  : 'Shift task'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm">
+          <div>
+            <Label>Destination project</Label>
+            <Select
+              className="mt-1"
+              value={shiftProjectId}
+              onChange={(e) => setShiftProjectId(e.target.value)}
+            >
+              <option value="">Select project…</option>
+              {projectOptions.map((p) => (
+                <option key={p._id} value={p._id}>
+                  {p.name}
+                  {p._id === task?.project?._id ? ' (current)' : ''}
+                </option>
+              ))}
+            </Select>
+          </div>
+          {(shiftSubtaskId || isSubtask) && (
+            <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-900">
+              The subtask will leave its parent and appear as a normal task on the destination project board.
+            </p>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={renameProjectOpen}
+        onClose={() => !renameProject.isPending && setRenameProjectOpen(false)}
+        title="Rename project"
+        description="Updates the project name everywhere it appears on boards and reports."
+        size="sm"
+        preventDismiss={renameProject.isPending}
+        footer={
+          <>
+            <Button
+              variant="outline"
+              disabled={renameProject.isPending}
+              onClick={() => setRenameProjectOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                !projectNameDraft.trim() ||
+                projectNameDraft.trim() === task?.project?.name ||
+                renameProject.isPending
+              }
+              onClick={() => renameProject.mutate()}
+              className="gap-1.5"
+            >
+              <FolderPen className="h-3.5 w-3.5" />
+              {renameProject.isPending ? 'Saving…' : 'Save project name'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-1.5">
+          <Label>Project name</Label>
+          <Input
+            value={projectNameDraft}
+            onChange={(e) => setProjectNameDraft(e.target.value)}
+            placeholder="Project name"
+            autoFocus
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        open={mergeOpen}
+        onClose={() => !mergeProjects.isPending && setMergeOpen(false)}
+        title="Merge projects"
+        description="Move tasks from selected projects into one target project, then remove the sources."
+        size="md"
+        preventDismiss={mergeProjects.isPending}
+        footer={
+          <>
+            <Button variant="outline" disabled={mergeProjects.isPending} onClick={() => setMergeOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                !mergeTargetId ||
+                mergeSourceIds.length === 0 ||
+                mergeProjects.isPending
+              }
+              onClick={() => mergeProjects.mutate()}
+              className="gap-1.5"
+            >
+              <GitMerge className="h-3.5 w-3.5" />
+              {mergeProjects.isPending ? 'Merging…' : 'Merge into target'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4 text-xs">
+          <div className="space-y-1.5">
+            <Label>Target project (keep)</Label>
+            <Select
+              value={mergeTargetId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setMergeTargetId(id);
+                setMergeSourceIds((prev) => prev.filter((x) => x !== id));
+                const t = projectOptions.find((p) => p._id === id);
+                if (t) setMergeNewName(t.name);
+              }}
+            >
+              <option value="">Select target…</option>
+              {projectOptions.map((p) => (
+                <option key={p._id} value={p._id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Merged project name (optional)</Label>
+            <Input
+              value={mergeNewName}
+              onChange={(e) => setMergeNewName(e.target.value)}
+              placeholder="Optional rename after merge"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Projects to merge in</Label>
+            <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-2">
+              {projectOptions
+                .filter((p) => p._id !== mergeTargetId)
+                .map((p) => {
+                  const checked = mergeSourceIds.includes(p._id);
+                  return (
+                    <label
+                      key={p._id}
+                      className={cn(
+                        'flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2',
+                        checked ? 'bg-violet-50 border border-violet-200' : 'hover:bg-slate-50'
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setMergeSourceIds((prev) =>
+                            checked ? prev.filter((id) => id !== p._id) : [...prev, p._id]
+                          )
+                        }
+                      />
+                      <span className="font-semibold text-slate-800">{p.name}</span>
+                    </label>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={addOpen}

@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/Badge';
 import { AvatarCropperModal } from '@/components/ui/AvatarCropperModal';
 import { useAuthStore } from '@/stores/auth';
 import { cn } from '@/lib/utils';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 
 export function SettingsPage() {
   const qc = useQueryClient();
@@ -215,7 +216,13 @@ export function SettingsPage() {
 
   // Remove Avatar
   const removeAvatar = async () => {
-    if (!window.confirm('Remove your profile photo and revert to initial initials?')) return;
+    const ok = await confirmDialog({
+      title: 'Remove profile photo?',
+      description: 'Your avatar will revert to initials until you upload a new photo.',
+      confirmLabel: 'Remove photo',
+      tone: 'warning',
+    });
+    if (!ok) return;
     try {
       setIsUploadingAvatar(true);
       await api.patch('/auth/profile', { avatar: null });

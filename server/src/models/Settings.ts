@@ -38,6 +38,12 @@ export interface ISettings extends Document {
     logo?: string;
     address?: string;
   };
+  /** Company holidays — Sundays are always non-working; these are additional off days */
+  companyHolidays: {
+    date: string;
+    name: string;
+    recurring?: boolean;
+  }[];
   cloudinary?: {
     cloudName?: string;
     apiKey?: string;
@@ -85,6 +91,16 @@ const settingsSchema = new Schema<ISettings>(
       timezone: { type: String, default: 'Asia/Kolkata' },
       logo: String,
       address: String,
+    },
+    companyHolidays: {
+      type: [
+        {
+          date: { type: String, required: true }, // YYYY-MM-DD
+          name: { type: String, required: true, trim: true },
+          recurring: { type: Boolean, default: false },
+        },
+      ],
+      default: [],
     },
     cloudinary: {
       cloudName: String,

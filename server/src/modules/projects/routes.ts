@@ -366,7 +366,7 @@ router.patch(
     }
     await writeAudit({
       actor: req.user!.id,
-      action: 'update',
+      action: body.name && body.name !== before.name ? 'rename' : 'update',
       entity: 'Project',
       entityId: id,
       before,
@@ -374,6 +374,107 @@ router.patch(
       req,
     });
     res.json({ success: true, data: project });
+  })
+);
+
+/**
+ * Merge one or more source projects into this target project.
+ * Moves all tasks (and DocumentFile.project links when present), unions members, then deletes sources.
+ */
+router.post(
+  '/:id/merge',
+  authorize('projects', 'update'),
+  asyncHandler(async (req, res) => {
+    const targetId = paramId(req.params.id);
+    const body = z
+      .object({
+        sourceIds: z.array(z.string().min(1)).min(1),
+        newName: z.string().min(1).max(120).optional(),
+      })
+      .parse(req.body);
+
+    const sourceIds = Array.from(
+      new Set(body.sourceIds.map(String).filter((id) => id && id !== targetId))
+    );
+    if (!sourceIds.length) {
+      throw new AppError('Select at least one other project to merge', 400);
+    }
+
+    const target = await Project.findById(targetId);
+    if (!target) throw new NotFoundError('Target project not found');
+
+    const sources = await Project.find({ _id: { $in: sourceIds } });
+    if (sources.length !== sourceIds.length) {
+      throw new AppError('One or more source projects were not found', 404);
+    }
+
+    const memberSet = new Set(target.members.map(String));
+    for (const src of sources) {
+      for (const m of src.members || []) memberSet.add(String(m));
+    }
+    target.members = [...memberSet].map((id) => new mongoose.Types.ObjectId(id));
+    if (body.newName?.trim()) target.name = body.newName.trim();
+
+    // Prefer keeping an active status if any merged project is active
+    if (target.status !== 'active' && sources.some((s) => s.status === 'active')) {
+      target.status = 'active';
+    }
+    await target.save();
+
+    const taskMove = await Task.updateMany(
+      { project: { $in: sourceIds } },
+      { $set: { project: target._id } }
+    );
+
+    let filesMoved = 0;
+    try {
+      const fileResult = await DocumentFile.updateMany(
+        { project: { $in: sourceIds } },
+        { $set: { project: target._id } }
+      );
+      filesMoved = fileResult.modifiedCount || 0;
+    } catch {
+      /* project field may be absent on some docs — non-fatal */
+    }
+
+    await Project.deleteMany({ _id: { $in: sourceIds } });
+
+    if (body.newName?.trim()) {
+      try {
+        const { ensureProjectFolders } = await import('../../services/projectFolders.js');
+        await ensureProjectFolders(targetId, target.name, req.user!.id);
+      } catch {
+        /* non-fatal */
+      }
+    }
+
+    await writeAudit({
+      actor: req.user!.id,
+      action: 'merge',
+      entity: 'Project',
+      entityId: targetId,
+      after: {
+        targetId,
+        sourceIds,
+        tasksMoved: taskMove.modifiedCount,
+        filesMoved,
+        name: target.name,
+      },
+      req,
+    });
+
+    const populated = await Project.findById(targetId).populate(['owner', 'client', 'members']);
+    res.json({
+      success: true,
+      data: {
+        project: populated,
+        merged: {
+          sourceIds,
+          tasksMoved: taskMove.modifiedCount,
+          filesMoved,
+        },
+      },
+    });
   })
 );
 

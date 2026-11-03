@@ -37,13 +37,17 @@ export function NotificationBell() {
   const markRead = useMutation({
     mutationFn: async (payload: { ids?: string[]; all?: boolean }) =>
       api.patch('/alerts/notifications/read', payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['sidebar-badges'] });
+    },
   });
 
   useEffect(() => {
     const socket = connectSocket();
     const onNote = (payload: { title?: string; message?: string }) => {
       qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['sidebar-badges'] });
       if (payload?.title) {
         toast.message(payload.title, { description: payload.message });
       }

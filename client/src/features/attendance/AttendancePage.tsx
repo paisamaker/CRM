@@ -13,6 +13,7 @@ import {
   Calendar,
   Shield,
   FileSpreadsheet,
+  CalendarDays,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
@@ -24,6 +25,7 @@ import { EmployeeDirectory } from './components/EmployeeDirectory';
 import { EmployeeProfileDrawer } from './components/EmployeeProfileDrawer';
 import { DayDetailModal } from './components/DayDetailModal';
 import { AttendanceCorrectionModal } from './components/AttendanceCorrectionModal';
+import { HolidayManagerModal } from './components/HolidayManagerModal';
 import { formatDurationMinutes, formatDateReadable } from './attendanceUtils';
 import type { HeatmapResponse, EmployeeDirectoryItem } from './types';
 
@@ -40,6 +42,8 @@ export function AttendancePage() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [correctRecordId, setCorrectRecordId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [holidaysOpen, setHolidaysOpen] = useState(false);
+  const isCeo = role === 'ceo';
 
   // Workforce Heatmap Query (Company wide if manager/ceo, personal if employee)
   const {
@@ -158,13 +162,23 @@ export function AttendancePage() {
           </h1>
           <p className="mt-0.5 text-xs text-slate-500">
             {exempt
-              ? 'Executive overview of active workforce hours, contribution heatmaps, and staff logs.'
-              : 'Record your daily shifts, submit completed work logs, and track activity progress.'}
+              ? 'Mon–Sat work week · Sundays off · Company holidays excluded from attendance rates.'
+              : 'Record shifts on working days. Sundays and company holidays are not counted.'}
           </p>
         </div>
 
         {/* Global Actions */}
         <div className="flex flex-wrap items-center gap-2">
+          {isCeo && (
+            <button
+              type="button"
+              onClick={() => setHolidaysOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-900 shadow-2xs hover:bg-amber-100 transition"
+            >
+              <CalendarDays className="h-3.5 w-3.5 text-amber-700" />
+              <span>Manage holidays</span>
+            </button>
+          )}
           {canManage && (
             <button
               type="button"
@@ -355,6 +369,7 @@ export function AttendancePage() {
         year={selectedYear}
         onYearChange={setSelectedYear}
         days={days}
+        holidays={heatmapData?.holidays || []}
         summary={summary}
         onSelectDate={(date) => setSelectedDate(date)}
         selectedDate={selectedDate}
@@ -403,6 +418,10 @@ export function AttendancePage() {
           handleRefresh();
         }}
       />
+
+      {isCeo ? (
+        <HolidayManagerModal open={holidaysOpen} onClose={() => setHolidaysOpen(false)} />
+      ) : null}
     </div>
   );
 }

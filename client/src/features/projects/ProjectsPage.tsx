@@ -26,6 +26,7 @@ import {
   Target,
   Paperclip,
   FileText,
+  GitMerge,
 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
 import { Badge, statusTone } from '@/components/ui/Badge';
@@ -75,7 +76,8 @@ export function ProjectsPage() {
   const role = useAuthStore((s) => s.user?.role);
   const can = useAuthStore((s) => s.can);
   const canCreate = role === 'ceo' || can('projects', 'create');
-  const canAssign = role === 'ceo' || role === 'manager' || can('projects', 'update');
+  const canUpdate = role === 'ceo' || can('projects', 'update');
+  const canAssign = canUpdate || role === 'manager';
   const canDelete = role === 'ceo';
   const qc = useQueryClient();
 
@@ -89,6 +91,10 @@ export function ProjectsPage() {
   const [deleteTarget, setDeleteTarget] = useState<ProjectRow | null>(null);
   const [assignProject, setAssignProject] = useState<ProjectRow | null>(null);
   const [filesProject, setFilesProject] = useState<ProjectRow | null>(null);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [mergeSourceIds, setMergeSourceIds] = useState<string[]>([]);
+  const [mergeNewName, setMergeNewName] = useState('');
 
   // Assign modal state
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
@@ -182,7 +188,7 @@ export function ProjectsPage() {
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
-  // Edit project mutation
+  // Edit project mutation (supports rename)
   const update = useMutation({
     mutationFn: async () =>
       api.patch(`/projects/${editProject!._id}`, {
@@ -199,6 +205,30 @@ export function ProjectsPage() {
       toast.success('Project updated successfully');
       setEditProject(null);
       qc.invalidateQueries({ queryKey: ['projects'] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['tasks-board'] });
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  const mergeProjects = useMutation({
+    mutationFn: async () =>
+      (
+        await api.post(`/projects/${mergeTargetId}/merge`, {
+          sourceIds: mergeSourceIds,
+          newName: mergeNewName.trim() || undefined,
+        })
+      ).data,
+    onSuccess: (res) => {
+      const moved = res?.data?.merged?.tasksMoved ?? 0;
+      toast.success(`Projects merged — ${moved} task(s) moved into the target`);
+      qc.invalidateQueries({ queryKey: ['projects'] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['tasks-board'] });
+      setMergeOpen(false);
+      setMergeTargetId('');
+      setMergeSourceIds([]);
+      setMergeNewName('');
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
@@ -329,7 +359,22 @@ export function ProjectsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {canUpdate && projectsList.length >= 2 ? (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setMergeTargetId(projectsList[0]?._id || '');
+                setMergeSourceIds([]);
+                setMergeNewName(projectsList[0]?.name || '');
+                setMergeOpen(true);
+              }}
+              className="justify-center text-xs font-semibold"
+            >
+              <GitMerge className="h-3.5 w-3.5 mr-1.5" />
+              Merge Projects
+            </Button>
+          ) : null}
           {canCreate && (
             <Button
               onClick={() => {
@@ -519,26 +564,28 @@ export function ProjectsPage() {
 
                       {/* Dropdown / Quick action menu */}
                       <div className="relative flex items-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditProject(p);
-                            setEditForm({
-                              name: p.name,
-                              client: p.client?._id || '',
-                              budget: String(p.budget || ''),
-                              startDate: p.startDate ? p.startDate.split('T')[0] : '',
-                              endDate: p.endDate ? p.endDate.split('T')[0] : '',
-                              status: p.status,
-                              progress: p.progress || 0,
-                              description: p.description || '',
-                            });
-                          }}
-                          className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-                          title="Edit project"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
+                        {canUpdate ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditProject(p);
+                              setEditForm({
+                                name: p.name,
+                                client: p.client?._id || '',
+                                budget: String(p.budget || ''),
+                                startDate: p.startDate ? p.startDate.split('T')[0] : '',
+                                endDate: p.endDate ? p.endDate.split('T')[0] : '',
+                                status: p.status,
+                                progress: p.progress || 0,
+                                description: p.description || '',
+                              });
+                            }}
+                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+                            title="Edit / rename project"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
                         {canDelete && (
                           <button
                             type="button"
@@ -1182,6 +1229,109 @@ export function ProjectsPage() {
           Are you sure you want to delete <strong className="text-slate-900">{deleteTarget?.name}</strong>?
           This will permanently remove the project and its configurations.
         </p>
+      </Modal>
+
+      {/* Merge Projects Modal */}
+      <Modal
+        open={mergeOpen}
+        onClose={() => setMergeOpen(false)}
+        title="Merge Projects"
+        description="Move all tasks from selected projects into one target project, then remove the sources."
+        variant="dialog"
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2 w-full">
+            <Button variant="outline" onClick={() => setMergeOpen(false)} className="text-xs">
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                !mergeTargetId ||
+                mergeSourceIds.length === 0 ||
+                mergeProjects.isPending
+              }
+              onClick={() => mergeProjects.mutate()}
+              className="text-xs bg-[#0D9488] hover:bg-[#0B7D72] text-white"
+            >
+              <GitMerge className="h-3.5 w-3.5 mr-1.5" />
+              {mergeProjects.isPending ? 'Merging…' : 'Merge into target'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4 py-1 text-xs">
+          <div className="space-y-1.5">
+            <Label>Target project (keep)</Label>
+            <Select
+              value={mergeTargetId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setMergeTargetId(id);
+                setMergeSourceIds((prev) => prev.filter((x) => x !== id));
+                const t = projectsList.find((p) => p._id === id);
+                if (t) setMergeNewName(t.name);
+              }}
+            >
+              <option value="">Select target…</option>
+              {projectsList.map((p) => (
+                <option key={p._id} value={p._id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Merged project name (optional rename)</Label>
+            <Input
+              value={mergeNewName}
+              onChange={(e) => setMergeNewName(e.target.value)}
+              placeholder="Keep current target name or type a new one"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Projects to merge in (will be deleted after move)</Label>
+            <div className="max-h-52 space-y-1.5 overflow-y-auto rounded-xl border border-slate-200 p-2">
+              {projectsList
+                .filter((p) => p._id !== mergeTargetId)
+                .map((p) => {
+                  const checked = mergeSourceIds.includes(p._id);
+                  return (
+                    <label
+                      key={p._id}
+                      className={cn(
+                        'flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition',
+                        checked ? 'bg-teal-50 border border-teal-200' : 'hover:bg-slate-50'
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setMergeSourceIds((prev) =>
+                            checked ? prev.filter((id) => id !== p._id) : [...prev, p._id]
+                          )
+                        }
+                      />
+                      <span className="font-semibold text-slate-800">{p.name}</span>
+                      <span className="ml-auto text-[10px] capitalize text-slate-500">
+                        {p.status.replace('_', ' ')}
+                      </span>
+                    </label>
+                  );
+                })}
+              {projectsList.filter((p) => p._id !== mergeTargetId).length === 0 ? (
+                <div className="py-4 text-center text-slate-500">No other projects available</div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+            All tasks and team members from the selected projects move into the target. Source projects
+            are removed afterward. This cannot be undone.
+          </div>
+        </div>
       </Modal>
 
       {/* Project & Workflow Files / Content Modal */}

@@ -17,6 +17,7 @@ import {
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import type { Conversation } from '../types';
 
 interface ChatHeaderProps {
@@ -255,8 +256,14 @@ export function ChatHeader({
                 type="button"
                 role="menuitem"
                 className="flex w-full items-center gap-2 px-3 py-2 text-rose-600 hover:bg-rose-50"
-                onClick={() => {
-                  if (window.confirm('Hide this conversation from your list?')) onHide?.();
+                onClick={async () => {
+                  const ok = await confirmDialog({
+                    title: 'Hide conversation?',
+                    description: 'This hides the chat from your list. You can still open it again later if needed.',
+                    confirmLabel: 'Hide chat',
+                    tone: 'warning',
+                  });
+                  if (ok) onHide?.();
                   setMenuOpen(false);
                 }}
               >

@@ -4,8 +4,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
 import { useAuthStore } from '@/stores/auth';
+import { useUIStore } from '@/stores/ui';
 import { isTokenExpired, refreshSession } from '@/lib/api';
+
+function ThemedToaster() {
+  const theme = useUIStore((s) => s.theme);
+  return <Toaster richColors position="top-right" theme={theme} closeButton />;
+}
 
 // Eagerly loaded for instant login performance
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -25,6 +32,9 @@ const FinanceOverviewPage = lazy(() => import('@/features/finance/FinanceOvervie
 const TransactionsPage = lazy(() => import('@/features/finance/TransactionsPage').then((m) => ({ default: m.TransactionsPage })));
 const InvoicesPage = lazy(() => import('@/features/finance/InvoicesPage').then((m) => ({ default: m.InvoicesPage })));
 const PayrollPage = lazy(() => import('@/features/finance/PayrollPage').then((m) => ({ default: m.PayrollPage })));
+const PaymentRequestsPage = lazy(() =>
+  import('@/features/finance/PaymentRequestsPage').then((m) => ({ default: m.PaymentRequestsPage }))
+);
 const ApprovalsPage = lazy(() => import('@/features/approvals/ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })));
 const AnalyticsPage = lazy(() => import('@/features/analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
 const AlertsPage = lazy(() => import('@/features/alerts/AlertsPage').then((m) => ({ default: m.AlertsPage })));
@@ -85,6 +95,7 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <ConfirmProvider>
       <BrowserRouter>
         <Suspense fallback={<PageLoader />}>
           <Routes>
@@ -103,6 +114,7 @@ export default function App() {
                 <Route path="/clients" element={<ClientsPage />} />
                 <Route path="/leads" element={<LeadsPage />} />
                 <Route path="/finance/transactions" element={<TransactionsPage />} />
+                <Route path="/finance/payment-requests" element={<PaymentRequestsPage />} />
                 <Route path="/approvals" element={<ApprovalsPage />} />
                 <Route path="/alerts" element={<AlertsPage />} />
                 <Route path="/files" element={<FilesPage />} />
@@ -140,7 +152,8 @@ export default function App() {
           </Routes>
         </Suspense>
       </BrowserRouter>
-      <Toaster richColors position="top-right" theme="light" closeButton />
+      <ThemedToaster />
+      </ConfirmProvider>
     </QueryClientProvider>
   );
 }

@@ -31,10 +31,30 @@ import { BillModal, type BillItem } from './BillModal';
 import { RecordBillPaymentModal } from './RecordBillPaymentModal';
 import { syncFinanceQueries } from '../financeSync';
 import { useAuthStore } from '@/stores/auth';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
+
+function billCreatorId(bill: { createdBy?: string | { _id?: string } }) {
+  if (!bill.createdBy) return '';
+  return typeof bill.createdBy === 'string' ? bill.createdBy : bill.createdBy._id || '';
+}
 
 export function BillsReceiptsTab() {
   const qc = useQueryClient();
-  const isCeo = useAuthStore((s) => s.user?.role === 'ceo');
+  const role = useAuthStore((s) => s.user?.role);
+  const userId = useAuthStore((s) => s.user?.id);
+  const isCeo = role === 'ceo';
+  const isFinance = role === 'finance';
+
+  const canEditOrDeleteBill = (bill: {
+    paymentStatus?: string;
+    payments?: unknown[];
+    createdBy?: string | { _id?: string };
+  }) => {
+    if (isCeo || isFinance) return true;
+    const unpaidNoPayments =
+      bill.paymentStatus === 'unpaid' && (!bill.payments || bill.payments.length === 0);
+    return unpaidNoPayments && !!userId && billCreatorId(bill) === userId;
+  };
 
   const [typeFilter, setTypeFilter] = useState<'all' | 'payable' | 'receivable'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -397,29 +417,47 @@ export function BillsReceiptsTab() {
                             <Eye className="w-3.5 h-3.5" />
                           </button>
 
-                          {isCeo ? (
+                          {canEditOrDeleteBill(bill) ? (
                             <>
                               <button
                                 type="button"
                                 className="rounded p-1 text-[var(--fg-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--fg)]"
                                 onClick={() => openEditBill(bill)}
-                                title="Update bill (CEO)"
+                                title={
+                                  bill.paymentStatus === 'unpaid'
+                                    ? 'Edit unpaid bill'
+                                    : 'Update bill'
+                                }
                               >
                                 <Edit2 className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 type="button"
                                 className="rounded p-1 text-[var(--fg-secondary)] transition-colors hover:bg-rose-50 hover:text-rose-700"
-                                onClick={() => {
-                                  if (
-                                    confirm(
-                                      `Cancel/delete bill ${bill.billNumber}? This cannot be undone for unpaid bills.`
-                                    )
-                                  ) {
-                                    deleteMutation.mutate(bill._id!);
-                                  }
+                                onClick={async () => {
+                                  const unpaidClean =
+                                    bill.paymentStatus === 'unpaid' &&
+                                    (!bill.payments || bill.payments.length === 0);
+                                  const ok = await confirmDialog({
+                                    title: unpaidClean ? 'Delete unpaid bill?' : 'Cancel / delete bill?',
+                                    description: unpaidClean
+                                      ? `Delete unpaid bill ${bill.billNumber}? This cannot be undone.`
+                                      : `Cancel/delete bill ${bill.billNumber}? This cannot be undone for unpaid bills.`,
+                                    detail: (
+                                      <span className="font-semibold text-slate-900">
+                                        {bill.title || bill.billNumber}
+                                      </span>
+                                    ),
+                                    confirmLabel: unpaidClean ? 'Delete' : 'Cancel bill',
+                                    tone: 'danger',
+                                  });
+                                  if (ok) deleteMutation.mutate(bill._id!);
                                 }}
-                                title="Delete bill (CEO)"
+                                title={
+                                  bill.paymentStatus === 'unpaid'
+                                    ? 'Delete unpaid bill'
+                                    : 'Delete bill'
+                                }
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>

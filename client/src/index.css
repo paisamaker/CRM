@@ -95,40 +95,65 @@
   --accent-soft: var(--brand-soft);
 }
 
-/* Optional Dark theme fallback */
+/* Dark theme — keep teal brand, invert surfaces for readable contrast */
 .dark {
   color-scheme: dark;
-  --bg: #0b1120;
-  --bg-subtle: #0f172a;
-  --bg-elevated: #111b2e;
+  --bg: #0b1220;
+  --bg-subtle: #111827;
+  --bg-elevated: #152033;
   --bg-sidebar: #0f172a;
-  --bg-header: rgba(15, 23, 42, 0.85);
-  --bg-table-header: #111b2e;
-  --fg: #f8fafc;
+  --sidebar-border: #1e293b;
+  --sidebar-fg: #94a3b8;
+  --sidebar-fg-hover: #f1f5f9;
+  --sidebar-bg-hover: #1e293b;
+  --sidebar-active: #2dd4bf;
+  --bg-header: rgba(15, 23, 42, 0.92);
+  --bg-table-header: #152033;
+  --fg: #f1f5f9;
   --fg-secondary: #94a3b8;
   --fg-muted: #64748b;
-  --border: #1e293b;
+  --border: #243044;
   --divider: #1e293b;
-  --brand: #818cf8;
-  --brand-deep: #6366f1;
-  --brand-soft: #1e1b4b;
+
+  --brand: #14b8a6;
+  --brand-deep: #0d9488;
+  --brand-soft: rgba(20, 184, 166, 0.12);
+
   --orange: #fb923c;
   --orange-light: #fdba74;
-  --orange-soft: #431407;
-  --orange-border: #7c2d12;
+  --orange-soft: rgba(251, 146, 60, 0.12);
+  --orange-border: #9a3412;
   --orange-text: #fdba74;
+  --orange-glow: rgba(251, 146, 60, 0.2);
+
   --teal: #2dd4bf;
   --teal-light: #5eead4;
-  --teal-soft: #134e4a;
+  --teal-soft: rgba(45, 212, 191, 0.12);
   --teal-border: #115e59;
   --teal-text: #5eead4;
+  --teal-glow: rgba(45, 212, 191, 0.2);
+
   --purple: #a78bfa;
   --purple-light: #c4b5fd;
-  --purple-soft: #2e1065;
-  --purple-border: #4c1d95;
+  --purple-soft: rgba(167, 139, 250, 0.12);
+  --purple-border: #5b21b6;
   --purple-text: #c4b5fd;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 6px 20px rgba(0, 0, 0, 0.25);
-  --shadow-modal: 0 20px 50px rgba(0, 0, 0, 0.6);
+  --purple-glow: rgba(167, 139, 250, 0.2);
+
+  --success: #4ade80;
+  --success-bg: rgba(22, 163, 74, 0.15);
+  --warning: #fbbf24;
+  --warning-bg: rgba(217, 119, 6, 0.15);
+  --danger: #f87171;
+  --danger-bg: rgba(220, 38, 38, 0.15);
+  --info: #38bdf8;
+  --info-bg: rgba(2, 132, 199, 0.15);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
+  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.65);
 
   --surface: var(--bg-elevated);
   --surface-sunken: var(--bg-subtle);
@@ -137,6 +162,95 @@
   --border-subtle: var(--border);
   --accent: var(--brand);
   --accent-soft: var(--brand-soft);
+}
+
+.dark body {
+  background-image:
+    radial-gradient(at 100% 0%, rgba(45, 212, 191, 0.08) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(167, 139, 250, 0.06) 0px, transparent 50%);
+}
+
+.dark .glass-card {
+  background: rgba(21, 32, 51, 0.82);
+  border-color: rgba(36, 48, 68, 0.9);
+}
+
+.dark .data-table tbody tr:hover {
+  background: color-mix(in srgb, var(--teal-soft) 55%, transparent);
+}
+
+/*
+  Compatibility layer: many screens still use hardcoded light Tailwind colors.
+  Remap the common ones under .dark so the whole CRM stays readable.
+*/
+.dark .bg-white,
+.dark .bg-white\/50,
+.dark .bg-white\/80,
+.dark .bg-white\/85,
+.dark .bg-white\/90,
+.dark .bg-white\/95,
+.dark .bg-\[\#F7F8FA\],
+.dark .bg-\[\#f7f8fa\] {
+  background-color: var(--bg-elevated) !important;
+}
+.dark .hover\:bg-white:hover,
+.dark .hover\:bg-white\/90:hover,
+.dark .focus\:bg-white:focus {
+  background-color: var(--bg-elevated) !important;
+}
+.dark .bg-slate-50,
+.dark .bg-slate-50\/70,
+.dark .bg-slate-100,
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover {
+  background-color: var(--bg-subtle) !important;
+}
+.dark .from-white,
+.dark .via-\[\#F6F9FA\],
+.dark .to-\[\#EDF5F5\] {
+  --tw-gradient-from: var(--bg-sidebar) !important;
+  --tw-gradient-via: var(--bg-sidebar) !important;
+  --tw-gradient-to: var(--bg-subtle) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-\[\#171923\],
+.dark .text-\[\#0f172a\] {
+  color: var(--fg) !important;
+}
+.dark .text-slate-700,
+.dark .text-slate-600,
+.dark .text-\[\#4b5563\] {
+  color: var(--fg-secondary) !important;
+}
+.dark .text-slate-500,
+.dark .text-slate-400,
+.dark .text-\[\#667085\] {
+  color: var(--fg-muted) !important;
+}
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-200\/60,
+.dark .border-slate-200\/80,
+.dark .border-slate-200\/90,
+.dark .border-\[\#E5E7EB\],
+.dark .hover\:border-slate-300:hover {
+  border-color: var(--border) !important;
+}
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--border) !important;
+}
+.dark .placeholder\:text-slate-400::placeholder {
+  color: var(--fg-muted) !important;
+}
+.dark .shadow-xs,
+.dark .shadow-sm,
+.dark .shadow-md,
+.dark .shadow-lg,
+.dark .shadow-2xs {
+  --tw-shadow-color: rgba(0, 0, 0, 0.45);
 }
 
 * {

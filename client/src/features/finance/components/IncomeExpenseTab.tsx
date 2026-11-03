@@ -35,18 +35,33 @@ import { Modal } from '@/components/ui/Modal';
 import { TransactionModal, type TransactionItem } from './TransactionModal';
 import { syncFinanceQueries } from '../financeSync';
 import { useAuthStore } from '@/stores/auth';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface Props {
   type: 'revenue' | 'expense';
 }
 
+function creatorId(tx: { createdBy?: string | { _id?: string } }) {
+  if (!tx.createdBy) return '';
+  return typeof tx.createdBy === 'string' ? tx.createdBy : tx.createdBy._id || '';
+}
+
 export function IncomeExpenseTab({ type }: Props) {
   const qc = useQueryClient();
-  const isCeo = useAuthStore((s) => s.user?.role === 'ceo');
+  const role = useAuthStore((s) => s.user?.role);
+  const userId = useAuthStore((s) => s.user?.id);
+  const isCeo = role === 'ceo';
+  const isFinance = role === 'finance';
 
   const isIncome = type === 'revenue';
   const label = isIncome ? 'Income' : 'Expense';
   const labelPlural = isIncome ? 'Income' : 'Expenses';
+
+  const canEditOrDeleteTx = (tx: { status?: string; createdBy?: string | { _id?: string } }) => {
+    if (isCeo || isFinance) return true;
+    const pendingLike = ['draft', 'pending', 'rejected'].includes(String(tx.status || ''));
+    return pendingLike && !!userId && creatorId(tx) === userId;
+  };
 
   // Filters state
   const [search, setSearch] = useState('');
@@ -490,7 +505,7 @@ export function IncomeExpenseTab({ type }: Props) {
                             <Eye className="w-3.5 h-3.5" />
                           </button>
 
-                          {isCeo ? (
+                          {canEditOrDeleteTx(tx) ? (
                             <>
                               <button
                                 type="button"
@@ -499,23 +514,50 @@ export function IncomeExpenseTab({ type }: Props) {
                                   setEditingTransaction(tx);
                                   setModalOpen(true);
                                 }}
-                                title="Update transaction (CEO)"
+                                title={
+                                  ['draft', 'pending', 'rejected'].includes(String(tx.status))
+                                    ? 'Edit before CEO approval'
+                                    : 'Update transaction'
+                                }
                               >
                                 <Edit2 className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 type="button"
                                 className="rounded p-1 text-[var(--fg-secondary)] transition-colors hover:bg-rose-50 hover:text-rose-700"
-                                onClick={() => {
-                                  if (
-                                    confirm(
-                                      `Delete this ${label.toLowerCase()} of ${formatCurrency(tx.amount)}? Bank balance will be reversed if posted.`
-                                    )
-                                  ) {
-                                    deleteMutation.mutate(tx._id);
-                                  }
+                                onClick={async () => {
+                                  const pendingLike = ['draft', 'pending', 'rejected'].includes(
+                                    String(tx.status)
+                                  );
+                                  const ok = await confirmDialog({
+                                    title: pendingLike
+                                      ? `Delete pending ${label.toLowerCase()}?`
+                                      : `Delete ${label.toLowerCase()}?`,
+                                    description: pendingLike
+                                      ? `This ${label.toLowerCase()} of ${formatCurrency(tx.amount)} will be withdrawn from the approvals queue.`
+                                      : `Delete this ${label.toLowerCase()} of ${formatCurrency(tx.amount)}? Bank balance will be reversed if posted.`,
+                                    detail: (
+                                      <span>
+                                        <span className="font-semibold text-slate-900">
+                                          {tx.title || tx.key || label}
+                                        </span>
+                                        {tx.status ? (
+                                          <span className="ml-1 capitalize text-slate-500">
+                                            · {tx.status}
+                                          </span>
+                                        ) : null}
+                                      </span>
+                                    ),
+                                    confirmLabel: 'Delete',
+                                    tone: 'danger',
+                                  });
+                                  if (ok) deleteMutation.mutate(tx._id);
                                 }}
-                                title="Delete transaction (CEO)"
+                                title={
+                                  ['draft', 'pending', 'rejected'].includes(String(tx.status))
+                                    ? 'Delete / withdraw before CEO approval'
+                                    : 'Delete transaction'
+                                }
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -576,18 +618,23 @@ export function IncomeExpenseTab({ type }: Props) {
           title={`Transaction Receipt — ${viewTransaction.title || viewTransaction.category}`}
           description={`ID: ${viewTransaction._id}`}
           variant="dialog"
-          size="md"
+          size="lg"
           footer={
             <div className="flex items-center justify-between w-full">
               <Button variant="outline" size="sm" onClick={handlePrintTransaction}>
                 <Printer className="w-3.5 h-3.5 mr-1" /> Print Receipt
               </Button>
               <div className="flex items-center gap-2">
-                {viewTransaction.attachment?.url && (
+                {(viewTransaction.attachment?.url || viewTransaction.receipt?.url) && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => window.open(viewTransaction.attachment?.url, '_blank')}
+                    onClick={() =>
+                      window.open(
+                        viewTransaction.attachment?.url || viewTransaction.receipt?.url,
+                        '_blank'
+                      )
+                    }
                   >
                     <ExternalLink className="w-3.5 h-3.5 mr-1" /> View Attachment
                   </Button>
@@ -652,6 +699,64 @@ export function IncomeExpenseTab({ type }: Props) {
                 </div>
               </div>
             )}
+
+            {(() => {
+              const file =
+                viewTransaction.attachment?.url
+                  ? viewTransaction.attachment
+                  : viewTransaction.receipt?.url
+                    ? viewTransaction.receipt
+                    : null;
+              if (!file?.url) return null;
+
+              const mime = String(file.mime || '').toLowerCase();
+              const name = String(file.name || file.url || '').toLowerCase();
+              const isImage =
+                mime.startsWith('image/') ||
+                /\.(jpe?g|png|webp|gif|bmp)$/i.test(name) ||
+                /\.(jpe?g|png|webp|gif|bmp)(\?|$)/i.test(String(file.url));
+              const isPdf = mime === 'application/pdf' || /\.pdf(\?|$)/i.test(String(file.url)) || name.endsWith('.pdf');
+
+              return (
+                <div>
+                  <span className="text-[var(--fg-muted)] block mb-1">Attached file:</span>
+                  <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-sunken)] overflow-hidden">
+                    {isImage ? (
+                      <a href={file.url} target="_blank" rel="noreferrer" className="block">
+                        <img
+                          src={file.url}
+                          alt={file.name || 'Attachment'}
+                          className="max-h-72 w-full object-contain bg-[var(--bg)]"
+                        />
+                      </a>
+                    ) : isPdf ? (
+                      <iframe
+                        title={file.name || 'PDF attachment'}
+                        src={file.url}
+                        className="h-72 w-full bg-[var(--bg)]"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 p-3 text-[var(--fg-secondary)]">
+                        <FileText className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{file.name || 'Attachment'}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-2 border-t border-[var(--border-subtle)] px-3 py-2">
+                      <span className="truncate text-[11px] text-[var(--fg-muted)]">
+                        {file.name || 'Attachment'}
+                      </span>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--brand)] hover:underline"
+                        onClick={() => window.open(file.url, '_blank')}
+                      >
+                        <ExternalLink className="h-3 w-3" /> Open
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </Modal>
       )}

@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   Users,
@@ -19,6 +20,7 @@ import {
   Clock3,
   MessageSquare,
   FileText,
+  CreditCard,
   X,
   LogOut,
 } from 'lucide-react';
@@ -34,7 +36,19 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   roles: string[];
   resource?: string;
-  badge?: number | string;
+  badgeKey?: 'projects' | 'paymentRequests' | 'approvals' | 'chat';
+}
+
+type SidebarBadges = {
+  projects: number;
+  paymentRequests: number;
+  approvals: number;
+  chat: number;
+};
+
+function formatBadge(count: number): string | number | null {
+  if (!count || count <= 0) return null;
+  return count > 99 ? '99+' : count;
 }
 
 interface NavSection {
@@ -50,9 +64,9 @@ const sections: NavSection[] = [
       { to: '/analytics', label: 'Analytics', icon: BarChart3, roles: ['ceo', 'finance'], resource: 'analytics' },
       { to: '/alerts', label: 'Alerts', icon: Bell, roles: ['ceo', 'manager', 'finance', 'employee'] },
       { to: '/files', label: 'Files', icon: FolderOpen, roles: ['ceo', 'manager', 'finance', 'employee'], resource: 'files' },
-      { to: '/chat', label: 'Chat', icon: MessageSquare, roles: ['ceo', 'manager', 'finance', 'employee'], resource: 'chat' },
+      { to: '/chat', label: 'Chat', icon: MessageSquare, roles: ['ceo', 'manager', 'finance', 'employee'], resource: 'chat', badgeKey: 'chat' },
       { to: '/tasks', label: 'Tasks & Workflow', icon: CheckSquare, roles: ['ceo', 'manager', 'finance', 'employee'] },
-      { to: '/projects', label: 'Projects', icon: Briefcase, roles: ['ceo', 'manager', 'finance', 'employee'] },
+      { to: '/projects', label: 'Projects', icon: Briefcase, roles: ['ceo', 'manager', 'finance', 'employee'], badgeKey: 'projects' },
       { to: '/attendance', label: 'Attendance', icon: Clock3, roles: ['ceo', 'manager', 'finance', 'employee'], resource: 'attendance' },
       { to: '/tasks/monitoring', label: 'Task Monitor', icon: ClipboardList, roles: ['ceo'], resource: 'tasks_monitoring' },
     ],
@@ -69,9 +83,10 @@ const sections: NavSection[] = [
     items: [
       { to: '/finance', label: 'Finance Overview', icon: Landmark, roles: ['ceo', 'manager', 'finance'], resource: 'finance_overview' },
       { to: '/finance/transactions', label: 'Transactions', icon: Wallet, roles: ['ceo', 'manager', 'finance', 'employee'], resource: 'transactions' },
+      { to: '/finance/payment-requests', label: 'Payment Requests', icon: CreditCard, roles: ['ceo', 'manager', 'finance', 'employee'], resource: 'transactions', badgeKey: 'paymentRequests' },
       { to: '/finance/invoices', label: 'Bills & Invoices', icon: FileText, roles: ['ceo', 'manager', 'finance'], resource: 'invoices' },
       { to: '/finance/payroll', label: 'Salary & Payroll', icon: Users, roles: ['ceo', 'finance'], resource: 'payroll' },
-      { to: '/approvals', label: 'Approvals Queue', icon: ShieldCheck, roles: ['ceo', 'manager', 'finance', 'employee'] },
+      { to: '/approvals', label: 'Approvals Queue', icon: ShieldCheck, roles: ['ceo', 'manager', 'finance', 'employee'], badgeKey: 'approvals' },
     ],
   },
   {
@@ -93,6 +108,38 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   const setCollapsed = useUIStore((s) => s.setSidebarCollapsed);
   const navigate = useNavigate();
 
+  const qc = useQueryClient();
+
+  const { data: badges } = useQuery({
+    queryKey: ['sidebar-badges'],
+    queryFn: async () =>
+      (await api.get('/alerts/sidebar-badges')).data.data as SidebarBadges,
+    enabled: !!user,
+    refetchInterval: 20_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
+  });
+
+  const badgeMap: SidebarBadges = {
+    projects: badges?.projects || 0,
+    paymentRequests: badges?.paymentRequests || 0,
+    approvals: badges?.approvals || 0,
+    chat: badges?.chat || 0,
+  };
+
+  async function ackSidebarScope(scope?: NavItem['badgeKey']) {
+    if (!scope) return;
+    try {
+      await api.post('/alerts/sidebar-badges/ack', { scopes: [scope] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['sidebar-badges'] }),
+        qc.invalidateQueries({ queryKey: ['notifications'] }),
+      ]);
+    } catch {
+      /* non-fatal — live badges still refresh on interval */
+    }
+  }
+
   async function logout() {
     try {
       await api.post('/auth/logout');
@@ -105,26 +152,19 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   }
 
   return (
-    <div className="relative flex h-full flex-col justify-between overflow-hidden bg-gradient-to-b from-white via-[#F6F9FA] to-[#EDF5F5] text-slate-700">
-      {/* Tinted Cloud Ambient Glow & Mist Shading */}
+    <div className="relative flex h-full flex-col justify-between overflow-hidden bg-[var(--bg-sidebar)] text-[var(--sidebar-fg)]">
+      {/* Ambient glow */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-        {/* Upper Cloud Puff - Subtle Teal Mist */}
-        <div className="absolute -top-10 -left-10 h-44 w-44 rounded-full bg-[#00a884]/[0.08] blur-2xl" />
-        {/* Upper Right Cloud Glow */}
-        <div className="absolute top-12 -right-8 h-36 w-36 rounded-full bg-sky-200/25 blur-2xl" />
-        {/* Center Floating Cloud Shade */}
-        <div className="absolute top-1/2 -left-12 h-52 w-52 rounded-full bg-emerald-100/35 blur-3xl" />
-        {/* Lower Ambient Cloud Shade */}
-        <div className="absolute -bottom-10 -right-8 h-48 w-48 rounded-full bg-teal-200/20 blur-3xl" />
-        {/* Soft Cloud Sky Gradient Tint */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_rgba(240,253,250,0.7),_transparent_70%)]" />
+        <div className="absolute -top-10 -left-10 h-44 w-44 rounded-full bg-[var(--teal)]/10 blur-2xl" />
+        <div className="absolute top-12 -right-8 h-36 w-36 rounded-full bg-[var(--purple)]/10 blur-2xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_color-mix(in_srgb,var(--teal-soft)_70%,transparent),_transparent_70%)]" />
       </div>
 
       {/* Top Brand Card */}
-      <div className="relative z-10 p-3 border-b border-slate-200/60 bg-white/50 backdrop-blur-xs">
+      <div className="relative z-10 p-3 border-b border-[var(--sidebar-border)] bg-[var(--bg-elevated)]/40 backdrop-blur-xs">
         {!collapsed ? (
-          <div className="flex items-center gap-2.5 rounded-xl bg-white/80 p-2 border border-slate-200/80 shadow-2xs backdrop-blur-xs">
-            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-0.5 shadow-2xs">
+          <div className="flex items-center gap-2.5 rounded-xl bg-[var(--bg-elevated)]/80 p-2 border border-[var(--border)] shadow-2xs backdrop-blur-xs">
+            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[var(--bg-elevated)] p-0.5 shadow-2xs">
               <img
                 src="/images/starmedia_logo.webp"
                 alt="Star Media Logo"
@@ -136,19 +176,19 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="truncate text-xs font-black tracking-tight text-slate-900">STAR MEDIA</span>
-                <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.2 text-[8.5px] font-bold text-amber-800 border border-amber-300">
+                <span className="truncate text-xs font-black tracking-tight text-[var(--fg)]">STAR MEDIA</span>
+                <span className="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.2 text-[8.5px] font-bold text-amber-600 dark:text-amber-300 border border-amber-500/30">
                   PRO
                 </span>
               </div>
-              <div className="truncate text-[10px] font-medium text-slate-500">
+              <div className="truncate text-[10px] font-medium text-[var(--fg-muted)]">
                 Project &amp; Operations CRM
               </div>
             </div>
           </div>
         ) : (
           <div className="flex justify-center">
-            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/90 p-1 border border-slate-200 shadow-2xs">
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--bg-elevated)] p-1 border border-[var(--border)] shadow-2xs">
               <img
                 src="/images/starmedia_logo.webp"
                 alt="Star Media Logo"
@@ -172,36 +212,62 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
           return (
             <div key={section.label || idx}>
               {!collapsed && section.label ? (
-                <div className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
+                <div className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--fg-muted)]">
                   {section.label}
                 </div>
               ) : null}
               <div className="space-y-0.5">
-                {items.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    title={collapsed ? item.label : undefined}
-                    onClick={onNavigate}
-                    className={({ isActive }) =>
-                      cn(
-                        'group flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150',
-                        isActive
-                          ? 'bg-[#00a884] text-white font-semibold shadow-xs shadow-teal-700/20'
-                          : 'text-slate-600 hover:bg-white/80 hover:text-slate-900 hover:shadow-2xs',
-                        collapsed && 'justify-center px-0'
-                      )
-                    }
-                  >
-                    <item.icon className="h-4 w-4 shrink-0 transition-transform group-hover:scale-105" />
-                    {!collapsed ? <span className="truncate flex-1">{item.label}</span> : null}
-                    {!collapsed && item.badge ? (
-                      <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white shadow-xs">
-                        {item.badge}
+                {items.map((item) => {
+                  const badgeValue = item.badgeKey
+                    ? formatBadge(badgeMap[item.badgeKey])
+                    : null;
+                  const hasAlert = !!badgeValue;
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      title={
+                        collapsed
+                          ? hasAlert
+                            ? `${item.label} (${badgeValue} new)`
+                            : item.label
+                          : undefined
+                      }
+                      onClick={() => {
+                        void ackSidebarScope(item.badgeKey);
+                        onNavigate?.();
+                      }}
+                      className={({ isActive }) =>
+                        cn(
+                          'group relative flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150',
+                          isActive
+                            ? 'bg-[var(--sidebar-active)] text-white font-semibold shadow-xs shadow-teal-700/20'
+                            : 'text-[var(--sidebar-fg)] hover:bg-[var(--sidebar-bg-hover)] hover:text-[var(--sidebar-fg-hover)] hover:shadow-2xs',
+                          collapsed && 'justify-center px-0',
+                          hasAlert && !isActive && 'bg-rose-500/5'
+                        )
+                      }
+                    >
+                      <span className="relative shrink-0">
+                        <item.icon className="h-4 w-4 transition-transform group-hover:scale-105" />
+                        {hasAlert ? (
+                          <span
+                            className={cn(
+                              'absolute -right-1 -top-1 rounded-full bg-rose-500 ring-2 ring-[var(--bg-sidebar)]',
+                              collapsed ? 'h-2.5 w-2.5' : 'h-2 w-2'
+                            )}
+                          />
+                        ) : null}
                       </span>
-                    ) : null}
-                  </NavLink>
-                ))}
+                      {!collapsed ? <span className="truncate flex-1">{item.label}</span> : null}
+                      {!collapsed && hasAlert ? (
+                        <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white shadow-xs">
+                          {badgeValue}
+                        </span>
+                      ) : null}
+                    </NavLink>
+                  );
+                })}
               </div>
             </div>
           );
@@ -209,17 +275,17 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
       </nav>
 
       {/* Footer Area: Online Status & User Profile */}
-      <div className="relative z-10 p-3 space-y-2 border-t border-slate-200/60 bg-white/60 backdrop-blur-xs">
+      <div className="relative z-10 p-3 space-y-2 border-t border-[var(--sidebar-border)] bg-[var(--bg-elevated)]/50 backdrop-blur-xs">
         {!collapsed ? (
-          <div className="rounded-xl bg-white/85 border border-slate-200/80 px-3 py-2 shadow-2xs backdrop-blur-xs">
+          <div className="rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] px-3 py-2 shadow-2xs backdrop-blur-xs">
             <div className="flex items-center gap-2">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
               </span>
-              <span className="text-[11px] font-bold text-emerald-600 tracking-tight">Online</span>
+              <span className="text-[11px] font-bold text-emerald-500 tracking-tight">Online</span>
             </div>
-            <p className="mt-0.5 text-[10.5px] text-slate-500">All services connected</p>
+            <p className="mt-0.5 text-[10.5px] text-[var(--fg-muted)]">All services connected</p>
           </div>
         ) : (
           <div className="flex justify-center py-1" title="Online: All services connected">
@@ -235,12 +301,12 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
             <UserAvatar
               name={user?.name || 'User'}
               avatar={user?.avatar}
-              className="h-8 w-8 rounded-full ring-1 ring-slate-200 shrink-0 text-xs shadow-2xs"
+              className="h-8 w-8 rounded-full ring-1 ring-[var(--border)] shrink-0 text-xs shadow-2xs"
             />
             {!collapsed && (
               <div className="min-w-0 text-left">
-                <div className="truncate text-xs font-bold text-slate-900">{user?.name || 'User'}</div>
-                <div className="text-[10px] font-medium capitalize text-slate-500">{user?.role || 'Member'}</div>
+                <div className="truncate text-xs font-bold text-[var(--fg)]">{user?.name || 'User'}</div>
+                <div className="text-[10px] font-medium capitalize text-[var(--fg-muted)]">{user?.role || 'Member'}</div>
               </div>
             )}
           </div>
@@ -248,7 +314,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
             <button
               type="button"
               onClick={() => void logout()}
-              className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition"
+              className="text-[var(--fg-muted)] hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-500/10 transition"
               title="Log out"
               aria-label="Log out"
             >
@@ -257,7 +323,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
             <button
               type="button"
               onClick={() => setCollapsed(!collapsed)}
-              className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-200/60 transition"
+              className="text-[var(--fg-muted)] hover:text-[var(--fg)] p-1 rounded-lg hover:bg-[var(--sidebar-bg-hover)] transition"
               title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -279,7 +345,7 @@ export function Sidebar() {
       {/* Desktop */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-slate-200/80 bg-gradient-to-b from-white via-[#F6F9FA] to-[#EDF5F5] transition-all duration-200 md:flex shadow-[2px_0_16px_-4px_rgba(0,168,132,0.06),1px_0_0_0_rgba(226,232,240,0.85)]',
+          'fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-[var(--sidebar-border)] bg-[var(--bg-sidebar)] transition-all duration-200 md:flex shadow-[2px_0_16px_-4px_rgba(0,168,132,0.08)]',
           collapsed ? 'w-[72px]' : 'w-[235px]'
         )}
       >
@@ -290,10 +356,10 @@ export function Sidebar() {
       {mobileNavOpen ? (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-2xs" onClick={() => setMobileNavOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-[255px] flex-col bg-gradient-to-b from-white via-[#F6F9FA] to-[#EDF5F5] shadow-2xl">
+          <aside className="absolute inset-y-0 left-0 flex w-[255px] flex-col bg-[var(--bg-sidebar)] shadow-2xl">
             <button
               type="button"
-              className="absolute right-3 top-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              className="absolute right-3 top-4 rounded-lg p-1.5 text-[var(--fg-muted)] hover:bg-[var(--bg-subtle)] hover:text-[var(--fg)]"
               onClick={() => setMobileNavOpen(false)}
               aria-label="Close menu"
             >

@@ -15,13 +15,36 @@ import { User } from '../../models/User.js';
 import { getSettings } from '../../models/Settings.js';
 import { adjustBankBalance, directionForTxType } from '../../utils/bankLedger.js';
 import { memoryCache } from '../../utils/cache.js';
+import {
+  applyPaymentRequestAmountDecision,
+  applyPaymentRequestProofDecision,
+} from '../finance/paymentRequestRoutes.js';
 
 const router = Router();
 router.use(authenticate);
 
 async function applyApprovalSideEffects(approval: InstanceType<typeof Approval>, approved: boolean) {
   const status = approved ? 'approved' : 'rejected';
-  if (approval.refModel === 'Transaction') {
+  if (approval.refModel === 'PaymentRequest') {
+    // Payment-request decisions are handled from the Payment Requests UI, not Approvals Queue.
+    // Keep side-effect support if an old Approval record is acted on via API.
+    const actorId = String(approval.decidedBy || approval.requestedBy);
+    if (approval.type === 'payment_request_proof') {
+      await applyPaymentRequestProofDecision(
+        String(approval.refId),
+        approved,
+        actorId,
+        approval.reason
+      );
+    } else {
+      await applyPaymentRequestAmountDecision(
+        String(approval.refId),
+        approved,
+        actorId,
+        approval.reason
+      );
+    }
+  } else if (approval.refModel === 'Transaction') {
     const tx = await Transaction.findById(approval.refId);
     if (tx) {
       const previousStatus = tx.status;
@@ -67,21 +90,39 @@ async function applyApprovalSideEffects(approval: InstanceType<typeof Approval>,
   }
 }
 
+const PAYMENT_REQUEST_APPROVAL_TYPES = ['payment_request', 'payment_request_proof'] as const;
+
 router.get(
   '/',
   authorize('approvals', 'read'),
   asyncHandler(async (req, res) => {
     const filter: Record<string, unknown> = {};
     if (req.query.status) filter.status = req.query.status;
-    if (req.query.type) filter.type = req.query.type;
     if (req.user!.role !== 'ceo') filter.requestedBy = req.user!.id;
+
+    // Payment request approvals live only on /finance/payment-requests — keep Approvals Queue for bills/tx/payroll/etc.
+    if (req.query.type) {
+      const type = String(req.query.type);
+      if ((PAYMENT_REQUEST_APPROVAL_TYPES as readonly string[]).includes(type)) {
+        filter.type = { $in: [] }; // never list payment-request types here
+      } else {
+        filter.type = type;
+      }
+    } else {
+      filter.type = { $nin: [...PAYMENT_REQUEST_APPROVAL_TYPES] };
+    }
 
     const data = await paginate(Approval, filter, req, ['requestedBy', 'decidedBy']);
 
+    const totalsMatch: Record<string, unknown> = {
+      type: { $nin: [...PAYMENT_REQUEST_APPROVAL_TYPES] },
+    };
+    if (req.user!.role !== 'ceo') {
+      totalsMatch.requestedBy = new (await import('mongoose')).default.Types.ObjectId(req.user!.id);
+    }
+
     const totals = await Approval.aggregate([
-      ...(req.user!.role !== 'ceo'
-        ? [{ $match: { requestedBy: new (await import('mongoose')).default.Types.ObjectId(req.user!.id) } }]
-        : []),
+      { $match: totalsMatch },
       { $group: { _id: '$status', count: { $sum: 1 }, amount: { $sum: '$amount' } } },
     ]);
 

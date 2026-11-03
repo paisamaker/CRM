@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/Button';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { Badge, statusTone } from '@/components/ui/Badge';
 import { CreateTeamModal } from './CreateTeamModal';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import type { WorkingTeam } from '../types';
 
 interface WorkingTeamsListProps {
@@ -50,10 +51,15 @@ export function WorkingTeamsList({ canManage = true }: WorkingTeamsListProps) {
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
-  const handleDelete = (team: WorkingTeam) => {
-    if (window.confirm(`Are you sure you want to delete "${team.name}"?`)) {
-      deleteMutation.mutate(team._id);
-    }
+  const handleDelete = async (team: WorkingTeam) => {
+    const ok = await confirmDialog({
+      title: 'Delete team?',
+      description: 'This permanently removes the working team. Assigned projects keep their history.',
+      detail: <span className="font-semibold text-slate-900">{team.name}</span>,
+      confirmLabel: 'Delete team',
+      tone: 'danger',
+    });
+    if (ok) deleteMutation.mutate(team._id);
   };
 
   // Filter teams

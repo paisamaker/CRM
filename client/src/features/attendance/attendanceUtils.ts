@@ -50,6 +50,34 @@ export const ACTIVITY_COLORS = {
   4: '#087F5B', // Maximum
 } as const;
 
+/** Soft amber for company holidays */
+export const HOLIDAY_COLOR = '#FDE68A';
+/** Dark grey for Sundays / weekly offs */
+export const SUNDAY_COLOR = '#475569';
+
+export type CompanyHolidayInput = { date: string; name: string; recurring?: boolean };
+
+export function holidayNameForDate(
+  dateKey: string,
+  holidays: CompanyHolidayInput[] | undefined | null
+): string | undefined {
+  if (!holidays?.length) return undefined;
+  const key = dateKey.slice(0, 10);
+  const md = key.slice(5);
+  for (const h of holidays) {
+    const raw = String(h.date || '').slice(0, 10);
+    if (h.recurring && raw.slice(5) === md) return h.name;
+    if (raw === key) return h.name;
+  }
+  return undefined;
+}
+
+/** JS Date: Sunday = 0 */
+export function isSundayDateKey(dateKey: string): boolean {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1).getDay() === 0;
+}
+
 export interface CalendarDayCell {
   date: string; // YYYY-MM-DD
   weekIndex: number;

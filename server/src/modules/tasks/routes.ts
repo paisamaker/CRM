@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import mongoose from 'mongoose';
-import { authenticate, authorize, assertTaskAccess, requireRoles } from '../../middleware/auth.js';
+import { authenticate, authorize, assertTaskAccess } from '../../middleware/auth.js';
 import { upload, publicUploadPath } from '../../middleware/upload.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { Task, TASK_PRIORITIES, TASK_STATUSES } from '../../models/Task.js';
@@ -502,14 +502,48 @@ router.patch(
       body.progress = 100;
     }
 
+    // Moving task / subtask between projects
+    let projectChanged = false;
+    let detachSubtask = false;
+    if (body.project !== undefined) {
+      const nextProjectId = body.project ? String(body.project) : '';
+      const prevProjectId = before.project ? String(before.project) : '';
+      if (nextProjectId !== prevProjectId) {
+        if (nextProjectId) {
+          const { Project } = await import('../../models/Project.js');
+          const dest = await Project.findById(nextProjectId).select('_id name');
+          if (!dest) throw new AppError('Destination project not found', 404);
+        }
+        projectChanged = true;
+        // Subtask moving to another project becomes a standalone task on that project
+        if (isSubtask) {
+          detachSubtask = true;
+        }
+      }
+    }
+
     const update: Record<string, unknown> = { ...body };
     if (body.status === 'completed') update.completedAt = new Date();
     if (body.status === 'in_progress' && !before.startedAt) update.startedAt = new Date();
+    if (detachSubtask) {
+      update.parentTask = null;
+      update.issueType = 'task';
+    }
 
-    const task = await Task.findByIdAndUpdate(req.params.id, update, { new: true }).populate(
-      'assignees',
-      'name email'
-    );
+    const task = await Task.findByIdAndUpdate(req.params.id, update, { new: true })
+      .populate('assignees', 'name email')
+      .populate('project', 'name')
+      .populate('parentTask', 'title key status');
+
+    if (projectChanged && task && !detachSubtask) {
+      await Task.updateMany(
+        { parentTask: task._id },
+        { $set: { project: task.project || null } }
+      );
+    }
+    if (detachSubtask && before.parentTask) {
+      await syncParentProgress(String(before.parentTask));
+    }
 
     if (body.status && body.status !== before.status) {
       const ids = (task?.assignees || [])
@@ -635,15 +669,24 @@ router.post(
 router.delete(
   '/:id',
   authorize('tasks', 'delete'),
-  requireRoles('ceo'),
   asyncHandler(async (req, res) => {
     const task = await Task.findById(req.params.id);
     if (!task) throw new NotFoundError('Task not found');
+    assertTaskAccess(task, req.user!, 'write');
     const parentId = task.parentTask ? String(task.parentTask) : null;
+    const childIds = await Task.find({ parentTask: task._id }).select('_id').lean();
     await Task.deleteMany({ parentTask: task._id });
     await Task.findByIdAndDelete(task._id);
     if (parentId) await syncParentProgress(parentId);
-    res.json({ success: true, data: { ok: true } });
+    await writeAudit({
+      actor: req.user!.id,
+      action: 'delete',
+      entity: 'Task',
+      entityId: String(task._id),
+      before: { title: task.title, key: task.key, subtasksDeleted: childIds.length },
+      req,
+    });
+    res.json({ success: true, data: { ok: true, deletedSubtasks: childIds.length } });
   })
 );
 

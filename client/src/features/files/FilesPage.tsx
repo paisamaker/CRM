@@ -40,6 +40,7 @@ import { Label, Select, Input } from '@/components/ui/Input';
 import { formatDate, cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { FilePreviewModal, type PreviewFile } from '@/components/files/FilePreviewModal';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 
 type NavView =
   | 'all'
@@ -614,10 +615,17 @@ export function FilesPage() {
                               <button
                                 type="button"
                                 className="rounded p-1 text-rose-500 hover:bg-rose-50"
-                                onClick={() => {
-                                  if (window.confirm(`Move "${item.name}" to trash?`)) {
-                                    trashMutation.mutate(item._id);
-                                  }
+                                onClick={async () => {
+                                  const ok = await confirmDialog({
+                                    title: 'Move to trash?',
+                                    description: 'You can restore this file later from trash.',
+                                    detail: (
+                                      <span className="font-semibold text-slate-900">{item.name}</span>
+                                    ),
+                                    confirmLabel: 'Move to trash',
+                                    tone: 'danger',
+                                  });
+                                  if (ok) trashMutation.mutate(item._id);
                                 }}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />

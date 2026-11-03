@@ -71,6 +71,7 @@ export function PersonalActivityHeatmap() {
           year={selectedYear}
           onYearChange={setSelectedYear}
           days={days}
+          holidays={data?.holidays || []}
           summary={summary}
           onSelectDate={(date) => setSelectedDate(date)}
           employeeName={user?.name}

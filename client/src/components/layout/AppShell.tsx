@@ -34,14 +34,9 @@ const titles: Record<string, string> = {
 
 export function AppShell() {
   const collapsed = useUIStore((s) => s.sidebarCollapsed);
-  const setTheme = useUIStore((s) => s.setTheme);
   const accessToken = useAuthStore((s) => s.accessToken);
   const setPermissions = useAuthStore((s) => s.setPermissions);
   const location = useLocation();
-
-  useEffect(() => {
-    setTheme('light');
-  }, [setTheme]);
 
   useEffect(() => {
     if (!accessToken) return;

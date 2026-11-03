@@ -13,10 +13,12 @@ interface UIState {
   toggleTheme: () => void;
 }
 
-function applyTheme(theme: 'light' | 'dark') {
+export function applyTheme(theme: 'light' | 'dark') {
   const root = document.documentElement;
   root.classList.toggle('dark', theme === 'dark');
   root.classList.toggle('light', theme === 'light');
+  root.dataset.theme = theme;
+  root.style.colorScheme = theme;
 }
 
 export const useUIStore = create<UIState>()(
@@ -41,8 +43,11 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'sm-ui',
+      partialize: (s) => ({
+        theme: s.theme,
+        sidebarCollapsed: s.sidebarCollapsed,
+      }),
       onRehydrateStorage: () => (state) => {
-        // Prefer light theme for the redesign; migrate old "system" values
         const theme = state?.theme === 'dark' ? 'dark' : 'light';
         applyTheme(theme);
         if (state && state.theme !== theme) state.theme = theme;
@@ -51,8 +56,14 @@ export const useUIStore = create<UIState>()(
   )
 );
 
-// Ensure light theme on first paint
+/** Apply persisted theme ASAP to avoid a light flash before rehydrate */
 if (typeof document !== 'undefined') {
-  document.documentElement.classList.remove('dark');
-  document.documentElement.classList.add('light');
+  try {
+    const raw = localStorage.getItem('sm-ui');
+    const parsed = raw ? (JSON.parse(raw) as { state?: { theme?: string } }) : null;
+    const theme = parsed?.state?.theme === 'dark' ? 'dark' : 'light';
+    applyTheme(theme);
+  } catch {
+    applyTheme('light');
+  }
 }

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { authenticate, authorize, requireRoles } from '../../middleware/auth.js';
+import { authenticate, authorize } from '../../middleware/auth.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { upload, finalizeUploadedFile } from '../../middleware/upload.js';
 import { Bill, IBill } from '../../models/Bill.js';
@@ -272,10 +272,34 @@ router.post(
   })
 );
 
-// PATCH /api/v1/finance/bills/:id — CEO only
+function isBillOwner(bill: { createdBy?: { toString(): string } | string }, userId: string) {
+  return String(bill.createdBy || '') === userId;
+}
+
+/** Unpaid bills with no payments can be edited/deleted by creator until settled/approved by CEO. */
+function assertCanMutateBill(
+  bill: {
+    paymentStatus: string;
+    payments?: unknown[];
+    createdBy?: { toString(): string } | string;
+  },
+  user: { id: string; role: string },
+  action: 'update' | 'delete'
+) {
+  if (['ceo', 'finance'].includes(user.role)) return;
+  const unpaidEditable =
+    bill.paymentStatus === 'unpaid' && (!bill.payments || bill.payments.length === 0);
+  if (unpaidEditable && isBillOwner(bill, user.id)) return;
+  throw new ForbiddenError(
+    action === 'delete'
+      ? 'Only unpaid bills you created (with no payments) can be deleted'
+      : 'Only unpaid bills you created (with no payments) can be edited'
+  );
+}
+
+// PATCH /api/v1/finance/bills/:id — creator while unpaid; CEO/finance anytime
 router.patch(
   '/:id',
-  requireRoles('ceo'),
   authorize('invoices', 'update'),
   upload.single('attachment'),
   asyncHandler(async (req: Request, res: Response) => {
@@ -299,9 +323,18 @@ router.patch(
 
     const bill = await Bill.findById(req.params.id);
     if (!bill) throw new NotFoundError('Bill not found');
+    assertCanMutateBill(bill, req.user!, 'update');
 
     if (bill.paymentStatus === 'cancelled' && req.user!.role !== 'ceo') {
       throw new ForbiddenError('Only CEO can edit a cancelled bill');
+    }
+
+    if (
+      !['ceo', 'finance'].includes(req.user!.role) &&
+      parsed.paymentStatus &&
+      parsed.paymentStatus !== bill.paymentStatus
+    ) {
+      throw new ForbiddenError('Only CEO/finance can change bill payment status');
     }
 
     if (parsed.title) bill.title = parsed.title;
@@ -491,14 +524,14 @@ router.post(
   })
 );
 
-// DELETE /api/v1/finance/bills/:id — CEO only (cancels or deletes safely)
+// DELETE /api/v1/finance/bills/:id — creator while unpaid; CEO/finance for paid/cancel
 router.delete(
   '/:id',
-  requireRoles('ceo'),
   authorize('invoices', 'delete'),
   asyncHandler(async (req, res) => {
     const bill = await Bill.findById(req.params.id);
     if (!bill) throw new NotFoundError('Bill not found');
+    assertCanMutateBill(bill, req.user!, 'delete');
 
     if (bill.payments.length > 0 && req.user!.role !== 'ceo') {
       throw new ForbiddenError(

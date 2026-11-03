@@ -16,6 +16,7 @@ import { getAuthenticatedFileUrl, downloadFile, isImageFile, isPdfFile } from '@
 import { formatDate } from '@/lib/utils';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { FilePreviewModal, type PreviewFile } from './FilePreviewModal';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 
 export interface AttachmentItem {
   _id?: string;
@@ -253,9 +254,16 @@ export function AttachmentsSection({
                       <button
                         type="button"
                         onClick={async () => {
-                          if (confirm(`Remove attachment "${file.name}"?`)) {
-                            await onDelete(file._id!);
-                          }
+                          const ok = await confirmDialog({
+                            title: 'Remove attachment?',
+                            description: 'This file will be removed from the record.',
+                            detail: (
+                              <span className="font-semibold text-slate-900">{file.name}</span>
+                            ),
+                            confirmLabel: 'Remove',
+                            tone: 'danger',
+                          });
+                          if (ok) await onDelete(file._id!);
                         }}
                         className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition"
                         title="Delete attachment"

@@ -47,7 +47,7 @@ export function ProfileSection() {
   const contact = user.phone?.trim() || 'Not set';
 
   return (
-    <div className="h-full flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs transition-all">
+    <div className="h-full flex flex-col justify-between rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-5 sm:p-6 shadow-xs transition-all">
       {/* Top Header: Company Logo & Role Badge */}
       <div className="flex items-center justify-between border-b border-slate-100 pb-4">
         <div className="flex items-center gap-2.5">

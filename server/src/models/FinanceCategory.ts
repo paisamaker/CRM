@@ -2,7 +2,7 @@ import mongoose, { Schema, type Document, type Types } from 'mongoose';
 
 export interface IFinanceCategory extends Document {
   name: string;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'payment_request';
   isDefault: boolean;
   isActive: boolean;
   createdBy?: Types.ObjectId;
@@ -13,7 +13,7 @@ export interface IFinanceCategory extends Document {
 const financeCategorySchema = new Schema<IFinanceCategory>(
   {
     name: { type: String, required: true, trim: true },
-    type: { type: String, enum: ['income', 'expense'], required: true, index: true },
+    type: { type: String, enum: ['income', 'expense', 'payment_request'], required: true, index: true },
     isDefault: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true, index: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },

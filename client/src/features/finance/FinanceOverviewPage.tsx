@@ -10,6 +10,7 @@ import {
   Layers,
   Plus,
   RefreshCw,
+  CreditCard,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
@@ -18,20 +19,23 @@ import { IncomeExpenseTab } from './components/IncomeExpenseTab';
 import { BillsReceiptsTab } from './components/BillsReceiptsTab';
 import { SalaryManagementTab } from './components/SalaryManagementTab';
 import { FinancialReportsTab } from './components/FinancialReportsTab';
+import { PaymentRequestsTab } from './components/PaymentRequestsTab';
 import { FinanceCategoriesModal } from './components/FinanceCategoriesModal';
 import { TransactionModal } from './components/TransactionModal';
 import { BillModal } from './components/BillModal';
 import { PaySalaryModal } from './components/PaySalaryModal';
+import { PaymentRequestModal } from './components/PaymentRequestModal';
 import { syncFinanceQueries } from './financeSync';
 import { cn } from '@/lib/utils';
 
-type FinanceTab = 'dashboard' | 'income' | 'expenses' | 'bills' | 'salary' | 'reports';
+type FinanceTab = 'dashboard' | 'income' | 'expenses' | 'bills' | 'payment_requests' | 'salary' | 'reports';
 
 const TABS: { id: FinanceTab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
   { id: 'income', label: 'Income', icon: TrendingUp },
   { id: 'expenses', label: 'Expenses', icon: TrendingDown },
   { id: 'bills', label: 'Bills & Receipts', icon: Receipt },
+  { id: 'payment_requests', label: 'Payment Requests', icon: CreditCard },
   { id: 'salary', label: 'Salary', icon: Users },
   { id: 'reports', label: 'Reports', icon: FileSpreadsheet },
 ];
@@ -46,6 +50,7 @@ export function FinanceOverviewPage() {
   const [txInitialType, setTxInitialType] = useState<'revenue' | 'expense'>('revenue');
   const [billModalOpen, setBillModalOpen] = useState(false);
   const [salaryModalOpen, setSalaryModalOpen] = useState(false);
+  const [paymentRequestModalOpen, setPaymentRequestModalOpen] = useState(false);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -130,6 +135,15 @@ export function FinanceOverviewPage() {
               <Button size="sm" className="gap-1.5 text-xs" onClick={() => setBillModalOpen(true)}>
                 <Plus className="h-3.5 w-3.5" /> Bill
               </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 text-xs"
+                onClick={() => setPaymentRequestModalOpen(true)}
+              >
+                <CreditCard className="h-3.5 w-3.5" /> Payment Request
+              </Button>
             </div>
           </div>
         </div>
@@ -171,6 +185,7 @@ export function FinanceOverviewPage() {
         {activeTab === 'income' && <IncomeExpenseTab type="revenue" />}
         {activeTab === 'expenses' && <IncomeExpenseTab type="expense" />}
         {activeTab === 'bills' && <BillsReceiptsTab />}
+        {activeTab === 'payment_requests' && <PaymentRequestsTab />}
         {activeTab === 'salary' && <SalaryManagementTab />}
         {activeTab === 'reports' && <FinancialReportsTab />}
       </main>
@@ -183,6 +198,10 @@ export function FinanceOverviewPage() {
       />
       <BillModal open={billModalOpen} onClose={() => setBillModalOpen(false)} initialType="payable" />
       <PaySalaryModal open={salaryModalOpen} onClose={() => setSalaryModalOpen(false)} />
+      <PaymentRequestModal
+        open={paymentRequestModalOpen}
+        onClose={() => setPaymentRequestModalOpen(false)}
+      />
     </div>
   );
 }
