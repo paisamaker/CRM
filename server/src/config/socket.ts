@@ -7,6 +7,7 @@ import { logger } from '../utils/logger.js';
 import { Conversation } from '../models/Conversation.js';
 import { ChatMessage } from '../models/ChatMessage.js';
 import { User } from '../models/User.js';
+import { registerMeetingSignaling } from '../modules/meetings/signaling.js';
 
 let io: Server | null = null;
 
@@ -287,6 +288,8 @@ export function initSocket(httpServer: HttpServer): Server {
         }
       }
     );
+
+    registerMeetingSignaling(io!, socket);
 
     socket.on('disconnect', () => {
       const remaining = bumpPresence(userId, -1);

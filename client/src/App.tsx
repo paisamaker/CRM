@@ -35,6 +35,9 @@ const PayrollPage = lazy(() => import('@/features/finance/PayrollPage').then((m)
 const PaymentRequestsPage = lazy(() =>
   import('@/features/finance/PaymentRequestsPage').then((m) => ({ default: m.PaymentRequestsPage }))
 );
+const CreditPage = lazy(() =>
+  import('@/features/finance/CreditPage').then((m) => ({ default: m.CreditPage }))
+);
 const ApprovalsPage = lazy(() => import('@/features/approvals/ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })));
 const AnalyticsPage = lazy(() => import('@/features/analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
 const AlertsPage = lazy(() => import('@/features/alerts/AlertsPage').then((m) => ({ default: m.AlertsPage })));
@@ -45,6 +48,12 @@ const SecurityPage = lazy(() => import('@/features/settings/SecurityPage').then(
 const FilesPage = lazy(() => import('@/features/files/FilesPage').then((m) => ({ default: m.FilesPage })));
 const AttendancePage = lazy(() => import('@/features/attendance/AttendancePage').then((m) => ({ default: m.AttendancePage })));
 const ChatPage = lazy(() => import('@/features/chat/ChatPage').then((m) => ({ default: m.ChatPage })));
+const MeetingsPage = lazy(() =>
+  import('@/features/meetings/MeetingsPage').then((m) => ({ default: m.MeetingsPage }))
+);
+const MeetingRoomPage = lazy(() =>
+  import('@/features/meetings/MeetingRoomPage').then((m) => ({ default: m.MeetingRoomPage }))
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -115,11 +124,18 @@ export default function App() {
                 <Route path="/leads" element={<LeadsPage />} />
                 <Route path="/finance/transactions" element={<TransactionsPage />} />
                 <Route path="/finance/payment-requests" element={<PaymentRequestsPage />} />
+                <Route element={<ProtectedRoute roles={['ceo', 'manager']} />}>
+                  <Route path="/finance/credit" element={<CreditPage />} />
+                </Route>
                 <Route path="/approvals" element={<ApprovalsPage />} />
                 <Route path="/alerts" element={<AlertsPage />} />
                 <Route path="/files" element={<FilesPage />} />
                 <Route path="/attendance" element={<AttendancePage />} />
                 <Route path="/chat" element={<ChatPage />} />
+                <Route element={<ProtectedRoute resource="meetings" />}>
+                  <Route path="/meetings" element={<MeetingsPage />} />
+                  <Route path="/meetings/room/:code" element={<MeetingRoomPage />} />
+                </Route>
                 <Route path="/security" element={<SecurityPage />} />
 
                 <Route element={<ProtectedRoute resource="tasks_monitoring" />}>

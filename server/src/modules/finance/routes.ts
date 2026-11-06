@@ -34,6 +34,7 @@ import billRoutes from './billRoutes.js';
 import salaryRoutes from './salaryRoutes.js';
 import documentRoutes from './documentRoutes.js';
 import paymentRequestRoutes from './paymentRequestRoutes.js';
+import creditRoutes from './creditRoutes.js';
 import {
   startOfDay,
   endOfDay,
@@ -60,6 +61,7 @@ router.use('/bills', billRoutes);
 router.use('/salaries', salaryRoutes);
 router.use('/documents', documentRoutes);
 router.use('/payment-requests', paymentRequestRoutes);
+router.use('/credit', creditRoutes);
 
 export function parseFlexibleDate(val: unknown): Date | null {
   if (!val) return null;

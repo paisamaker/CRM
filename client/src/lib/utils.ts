@@ -23,17 +23,21 @@ export function formatPercent(value: number, digits = 1) {
 
 export function formatDate(value?: string | Date | null) {
   if (!value) return '—';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
   return new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(value)
+    d
   );
 }
 
 export function formatDateTime(value?: string | Date | null) {
   if (!value) return '—';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
   return new Intl.DateTimeFormat('en-IN', {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(value));
+  }).format(d);
 }

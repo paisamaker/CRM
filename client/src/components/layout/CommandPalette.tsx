@@ -5,7 +5,12 @@ import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import { Input } from '@/components/ui/Input';
 
-const links = [
+const links: Array<{
+  label: string;
+  to: string;
+  resource?: string;
+  roles?: string[];
+}> = [
   { label: 'Dashboard', to: '/dashboard' },
   { label: 'Tasks', to: '/tasks' },
   { label: 'Task Monitoring', to: '/tasks/monitoring', resource: 'tasks_monitoring' },
@@ -15,6 +20,7 @@ const links = [
   { label: 'Finance Overview', to: '/finance', resource: 'finance_overview' },
   { label: 'Transactions', to: '/finance/transactions' },
   { label: 'Payment Requests', to: '/finance/payment-requests' },
+  { label: 'Credit & Loans', to: '/finance/credit', roles: ['ceo', 'manager'] },
   { label: 'Bills', to: '/finance/invoices', resource: 'invoices' },
   { label: 'Salary & Payroll', to: '/finance/payroll', resource: 'payroll' },
   { label: 'Approvals', to: '/approvals' },
@@ -23,6 +29,7 @@ const links = [
   { label: 'Files', to: '/files', resource: 'files' },
   { label: 'Attendance', to: '/attendance', resource: 'attendance' },
   { label: 'Chat', to: '/chat', resource: 'chat' },
+  { label: 'Meetings', to: '/meetings', resource: 'meetings' },
   { label: 'Users', to: '/users', resource: 'users' },
   { label: 'Settings', to: '/settings', resource: 'settings' },
   { label: 'Audit Log', to: '/audit', resource: 'audit' },
@@ -59,6 +66,7 @@ export function CommandPalette() {
     () =>
       links.filter((l) => {
         if (!user) return false;
+        if (l.roles?.length && !l.roles.includes(user.role)) return false;
         if (l.resource && !can(l.resource, 'read') && user.role !== 'ceo') return false;
         return true;
       }),

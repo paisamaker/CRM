@@ -112,6 +112,14 @@ function approvalNotifFilter(userId: string) {
   };
 }
 
+function meetingNotifFilter(userId: string) {
+  return {
+    user: userId,
+    readAt: null,
+    $or: [{ type: 'meeting' }, { link: { $regex: /\/meetings/i } }],
+  };
+}
+
 /** Live sidebar badge counts — actionable queue sizes + unread chat/project alerts only (no stale Math.max). */
 router.get(
   '/sidebar-badges',
@@ -121,24 +129,26 @@ router.get(
     const role = req.user!.role;
     const uid = new mongoose.Types.ObjectId(userId);
 
-    const [pendingApprovals, paymentActionable, projectNotifs, conversationIds] = await Promise.all([
-      role === 'ceo'
-        ? Approval.countDocuments({
-            status: 'pending',
-            type: { $nin: PAYMENT_REQUEST_APPROVAL_TYPES },
-          })
-        : Promise.resolve(0),
-      role === 'ceo'
-        ? PaymentRequest.countDocuments({
-            status: { $in: ['pending', 'awaiting_final_approval'] },
-          })
-        : PaymentRequest.countDocuments({
-            createdBy: userId,
-            status: { $in: ['approved', 'awaiting_final_approval'] },
-          }),
-      Notification.countDocuments(projectNotifFilter(userId)),
-      Conversation.find({ members: uid }).select('_id').lean(),
-    ]);
+    const [pendingApprovals, paymentActionable, projectNotifs, meetingNotifs, conversationIds] =
+      await Promise.all([
+        role === 'ceo'
+          ? Approval.countDocuments({
+              status: 'pending',
+              type: { $nin: PAYMENT_REQUEST_APPROVAL_TYPES },
+            })
+          : Promise.resolve(0),
+        role === 'ceo'
+          ? PaymentRequest.countDocuments({
+              status: { $in: ['pending', 'awaiting_final_approval'] },
+            })
+          : PaymentRequest.countDocuments({
+              createdBy: userId,
+              status: { $in: ['approved', 'awaiting_final_approval'] },
+            }),
+        Notification.countDocuments(projectNotifFilter(userId)),
+        Notification.countDocuments(meetingNotifFilter(userId)),
+        Conversation.find({ members: uid }).select('_id').lean(),
+      ]);
 
     const convIds = conversationIds.map((c) => c._id);
     const chat =
@@ -159,6 +169,7 @@ router.get(
         paymentRequests: paymentActionable,
         approvals: pendingApprovals,
         chat,
+        meetings: meetingNotifs,
         updatedAt: new Date().toISOString(),
       },
     });
@@ -173,7 +184,7 @@ router.post(
     const body = z
       .object({
         scopes: z
-          .array(z.enum(['projects', 'paymentRequests', 'approvals', 'chat']))
+          .array(z.enum(['projects', 'paymentRequests', 'approvals', 'chat', 'meetings']))
           .min(1),
       })
       .parse(req.body);
@@ -187,6 +198,7 @@ router.post(
       if (scope === 'projects') filter = projectNotifFilter(userId);
       if (scope === 'paymentRequests') filter = paymentNotifFilter(userId);
       if (scope === 'approvals') filter = approvalNotifFilter(userId);
+      if (scope === 'meetings') filter = meetingNotifFilter(userId);
       // chat unread is message-level; opening Chat page handles read receipts per conversation
       if (scope === 'chat') {
         results.chat = 0;

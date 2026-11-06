@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Bell } from 'lucide-react';
+import { Bell, Video, CheckSquare, MessageSquare, Wallet, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
@@ -17,6 +17,25 @@ type Note = {
   readAt?: string | null;
   createdAt: string;
 };
+
+function noteIcon(type?: string) {
+  const t = (type || '').toLowerCase();
+  if (t.includes('meeting')) return Video;
+  if (t.includes('chat') || t.includes('message')) return MessageSquare;
+  if (t.includes('task') || t.includes('project') || t.includes('approval')) return CheckSquare;
+  if (t.includes('payment') || t.includes('payroll') || t.includes('invoice') || t.includes('expense')) {
+    return Wallet;
+  }
+  return Info;
+}
+
+function noteTone(type?: string) {
+  const t = (type || '').toLowerCase();
+  if (t.includes('meeting')) return 'bg-teal-100 text-teal-700';
+  if (t.includes('chat')) return 'bg-sky-100 text-sky-700';
+  if (t.includes('payment') || t.includes('payroll')) return 'bg-amber-100 text-amber-800';
+  return 'bg-slate-100 text-slate-600';
+}
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
@@ -45,18 +64,32 @@ export function NotificationBell() {
 
   useEffect(() => {
     const socket = connectSocket();
-    const onNote = (payload: { title?: string; message?: string }) => {
+    const onNote = (payload: {
+      title?: string;
+      message?: string;
+      link?: string;
+      type?: string;
+    }) => {
       qc.invalidateQueries({ queryKey: ['notifications'] });
       qc.invalidateQueries({ queryKey: ['sidebar-badges'] });
-      if (payload?.title) {
-        toast.message(payload.title, { description: payload.message });
-      }
+      if (!payload?.title) return;
+      const isMeeting = (payload.type || '').toLowerCase().includes('meeting');
+      toast.message(payload.title, {
+        description: payload.message,
+        action:
+          payload.link
+            ? {
+                label: isMeeting ? 'Join' : 'Open',
+                onClick: () => navigate(payload.link!),
+              }
+            : undefined,
+      });
     };
     socket.on('notification', onNote);
     return () => {
       socket.off('notification', onNote);
     };
-  }, [qc]);
+  }, [qc, navigate]);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -88,7 +121,6 @@ export function NotificationBell() {
 
       {open ? (
         <>
-          {/* Mobile backdrop for easy outside tap dismiss */}
           <div
             className="fixed inset-0 z-40 bg-slate-900/20 sm:hidden backdrop-blur-2xs"
             onClick={() => setOpen(false)}
@@ -102,48 +134,69 @@ export function NotificationBell() {
               {unread ? (
                 <button
                   type="button"
-                  className="rounded-lg px-2 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-50 hover:underline transition"
+                  className="rounded-lg px-2 py-1 text-xs font-semibold text-teal-700 transition hover:bg-teal-50 hover:underline"
                   onClick={() => markRead.mutate({ all: true })}
                 >
                   Mark all read
                 </button>
               ) : null}
             </div>
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-              {items.map((n) => (
-                <button
-                  key={n._id}
-                  type="button"
-                  className={cn(
-                    'block w-full px-4 py-3 text-left transition hover:bg-slate-50 active:bg-slate-100',
-                    !n.readAt && 'bg-teal-50/30'
-                  )}
-                  onClick={async () => {
-                    if (!n.readAt) await markRead.mutateAsync({ ids: [n._id] });
-                    setOpen(false);
-                    if (n.link) navigate(n.link);
-                    else navigate('/alerts?tab=notifications');
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-2.5">
+            <div className="flex-1 divide-y divide-slate-100 overflow-y-auto">
+              {items.map((n) => {
+                const Icon = noteIcon(n.type);
+                const meeting = (n.type || '').toLowerCase().includes('meeting');
+                return (
+                  <button
+                    key={n._id}
+                    type="button"
+                    className={cn(
+                      'flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 active:bg-slate-100',
+                      !n.readAt && (meeting ? 'bg-teal-50/50' : 'bg-teal-50/30')
+                    )}
+                    onClick={async () => {
+                      if (!n.readAt) await markRead.mutateAsync({ ids: [n._id] });
+                      setOpen(false);
+                      if (n.link) navigate(n.link);
+                      else navigate('/alerts?tab=notifications');
+                    }}
+                  >
+                    <span
+                      className={cn(
+                        'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl',
+                        noteTone(n.type)
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                    </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="truncate text-xs font-bold text-slate-900">{n.title}</span>
-                        {!n.readAt ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-teal-600" /> : null}
+                        {!n.readAt ? (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-teal-600" />
+                        ) : null}
                       </div>
-                      <div className="mt-0.5 line-clamp-2 text-xs text-slate-600 leading-relaxed">{n.message}</div>
-                      <div className="mt-1 text-[10px] font-medium text-slate-400">{formatDateTime(n.createdAt)}</div>
+                      <div className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-slate-600">
+                        {n.message}
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 text-[10px] font-medium text-slate-400">
+                        <span>{formatDateTime(n.createdAt)}</span>
+                        {meeting ? (
+                          <span className="rounded bg-teal-100 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-teal-700">
+                            Meeting
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
               {!items.length ? (
                 <div className="px-4 py-10 text-center text-xs text-slate-500">No notifications yet</div>
               ) : null}
             </div>
             <button
               type="button"
-              className="w-full border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 text-center text-xs font-bold text-teal-700 hover:bg-teal-50 hover:text-teal-800 transition"
+              className="w-full border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 text-center text-xs font-bold text-teal-700 transition hover:bg-teal-50 hover:text-teal-800"
               onClick={() => {
                 setOpen(false);
                 navigate('/alerts?tab=notifications');

@@ -1,7 +1,16 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth';
 
-export function ProtectedRoute({ resource, action = 'read' }: { resource?: string; action?: string }) {
+export function ProtectedRoute({
+  resource,
+  action = 'read',
+  roles,
+}: {
+  resource?: string;
+  action?: string;
+  /** If set, only these roles may access (e.g. ceo + manager). */
+  roles?: string[];
+}) {
   const { accessToken, user, can, isRestoring } = useAuthStore();
   const location = useLocation();
 
@@ -20,7 +29,18 @@ export function ProtectedRoute({ resource, action = 'read' }: { resource?: strin
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  if (resource && !can(resource, action) && user.role !== 'ceo') {
+  if (roles?.length && !roles.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // CEO always allowed; also allow meetings for any authenticated role if permission
+  // map is still warming up (persisted session from before resource existed).
+  if (
+    resource &&
+    !can(resource, action) &&
+    user.role !== 'ceo' &&
+    !(resource === 'meetings' && ['manager', 'finance', 'employee'].includes(user.role))
+  ) {
     return <Navigate to="/dashboard" replace />;
   }
 

@@ -19,10 +19,13 @@ const titles: Record<string, string> = {
   '/projects': 'Projects',
   '/attendance': 'Attendance',
   '/chat': 'Chat',
+  '/meetings': 'Meetings',
   '/clients': 'Clients',
   '/leads': 'Leads',
   '/finance': 'Finance Overview',
   '/finance/transactions': 'Transactions',
+  '/finance/payment-requests': 'Payment Requests',
+  '/finance/credit': 'Credit & Loans',
   '/finance/invoices': 'Bills',
   '/finance/payroll': 'Salary & Payroll',
   '/approvals': 'Approvals',
@@ -55,10 +58,23 @@ export function AppShell() {
 
   const title =
     titles[location.pathname] ||
-    Object.entries(titles).find(([k]) => location.pathname.startsWith(k) && k !== '/')?.[1] ||
+    [...Object.entries(titles)]
+      .filter(([k]) => k !== '/' && location.pathname.startsWith(k + '/'))
+      .sort((a, b) => b[0].length - a[0].length)[0]?.[1] ||
+    titles[Object.keys(titles).find((k) => location.pathname === k) || ''] ||
     'STAR MEDIA CRM';
 
   const isChatRoute = location.pathname.startsWith('/chat');
+  const isMeetingRoom = location.pathname.startsWith('/meetings/room/');
+
+  if (isMeetingRoom) {
+    return (
+      <div className="min-h-screen bg-[var(--bg)]">
+        <Outlet />
+        <CommandPalette />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">

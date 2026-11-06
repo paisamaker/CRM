@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Users,
@@ -51,6 +52,7 @@ export function ChatHeader({
   onHide,
   onSearchMessages,
 }: ChatHeaderProps) {
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const isGroup = conversation.type === 'group';
@@ -183,19 +185,19 @@ export function ChatHeader({
         )}
         <button
           type="button"
-          onClick={() => toast.info('Voice call connected')}
+          onClick={() => navigate('/meetings')}
           className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition"
           aria-label="Voice call"
-          title="Voice call"
+          title="Open Meetings"
         >
           <Phone className="h-4 w-4" />
         </button>
         <button
           type="button"
-          onClick={() => toast.info('Starting video call...')}
+          onClick={() => navigate('/meetings')}
           className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition"
           aria-label="Video call"
-          title="Video call"
+          title="Start a meeting"
         >
           <Video className="h-4 w-4" />
         </button>

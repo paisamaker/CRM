@@ -27,6 +27,7 @@ import filesRoutes from './modules/files/routes.js';
 import attendanceRoutes from './modules/attendance/routes.js';
 import chatRoutes from './modules/chat/routes.js';
 import teamsRoutes from './modules/teams/routes.js';
+import meetingsRoutes from './modules/meetings/routes.js';
 import healthRoutes from './modules/health/routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -116,6 +117,7 @@ export function createApp() {
   app.use('/api/v1/attendance', attendanceRoutes);
   app.use('/api/v1/chat', chatRoutes);
   app.use('/api/v1/teams', teamsRoutes);
+  app.use('/api/v1/meetings', meetingsRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

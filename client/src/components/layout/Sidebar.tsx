@@ -21,6 +21,8 @@ import {
   MessageSquare,
   FileText,
   CreditCard,
+  HandCoins,
+  Video,
   X,
   LogOut,
 } from 'lucide-react';
@@ -36,7 +38,7 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   roles: string[];
   resource?: string;
-  badgeKey?: 'projects' | 'paymentRequests' | 'approvals' | 'chat';
+  badgeKey?: 'projects' | 'paymentRequests' | 'approvals' | 'chat' | 'meetings';
 }
 
 type SidebarBadges = {
@@ -44,6 +46,7 @@ type SidebarBadges = {
   paymentRequests: number;
   approvals: number;
   chat: number;
+  meetings: number;
 };
 
 function formatBadge(count: number): string | number | null {
@@ -65,6 +68,14 @@ const sections: NavSection[] = [
       { to: '/alerts', label: 'Alerts', icon: Bell, roles: ['ceo', 'manager', 'finance', 'employee'] },
       { to: '/files', label: 'Files', icon: FolderOpen, roles: ['ceo', 'manager', 'finance', 'employee'], resource: 'files' },
       { to: '/chat', label: 'Chat', icon: MessageSquare, roles: ['ceo', 'manager', 'finance', 'employee'], resource: 'chat', badgeKey: 'chat' },
+      {
+        to: '/meetings',
+        label: 'Meetings',
+        icon: Video,
+        roles: ['ceo', 'manager', 'finance', 'employee'],
+        resource: 'meetings',
+        badgeKey: 'meetings',
+      },
       { to: '/tasks', label: 'Tasks & Workflow', icon: CheckSquare, roles: ['ceo', 'manager', 'finance', 'employee'] },
       { to: '/projects', label: 'Projects', icon: Briefcase, roles: ['ceo', 'manager', 'finance', 'employee'], badgeKey: 'projects' },
       { to: '/attendance', label: 'Attendance', icon: Clock3, roles: ['ceo', 'manager', 'finance', 'employee'], resource: 'attendance' },
@@ -84,6 +95,7 @@ const sections: NavSection[] = [
       { to: '/finance', label: 'Finance Overview', icon: Landmark, roles: ['ceo', 'manager', 'finance'], resource: 'finance_overview' },
       { to: '/finance/transactions', label: 'Transactions', icon: Wallet, roles: ['ceo', 'manager', 'finance', 'employee'], resource: 'transactions' },
       { to: '/finance/payment-requests', label: 'Payment Requests', icon: CreditCard, roles: ['ceo', 'manager', 'finance', 'employee'], resource: 'transactions', badgeKey: 'paymentRequests' },
+      { to: '/finance/credit', label: 'Credit & Loans', icon: HandCoins, roles: ['ceo', 'manager'] },
       { to: '/finance/invoices', label: 'Bills & Invoices', icon: FileText, roles: ['ceo', 'manager', 'finance'], resource: 'invoices' },
       { to: '/finance/payroll', label: 'Salary & Payroll', icon: Users, roles: ['ceo', 'finance'], resource: 'payroll' },
       { to: '/approvals', label: 'Approvals Queue', icon: ShieldCheck, roles: ['ceo', 'manager', 'finance', 'employee'], badgeKey: 'approvals' },
@@ -125,6 +137,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
     paymentRequests: badges?.paymentRequests || 0,
     approvals: badges?.approvals || 0,
     chat: badges?.chat || 0,
+    meetings: badges?.meetings || 0,
   };
 
   async function ackSidebarScope(scope?: NavItem['badgeKey']) {
@@ -205,7 +218,14 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
           const items = section.items.filter((item) => {
             if (!user) return false;
             if (!item.roles.includes(user.role)) return false;
-            if (item.resource && !can(item.resource, 'read') && user.role !== 'ceo') return false;
+            if (
+              item.resource &&
+              !can(item.resource, 'read') &&
+              user.role !== 'ceo' &&
+              !(item.resource === 'meetings' && ['manager', 'finance', 'employee'].includes(user.role))
+            ) {
+              return false;
+            }
             return true;
           });
           if (!items.length) return null;

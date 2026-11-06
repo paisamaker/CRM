@@ -24,3 +24,6 @@ export * from './Team.js';
 export * from './FinanceCategory.js';
 export * from './Bill.js';
 export * from './ScannedDocument.js';
+export * from './CreditFacility.js';
+export * from './CreditEntry.js';
+export * from './Meeting.js';

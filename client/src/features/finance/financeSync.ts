@@ -21,6 +21,10 @@ export async function syncFinanceQueries(qc: QueryClient): Promise<void> {
     qc.invalidateQueries({ queryKey: ['bank-accounts-lookup'], refetchType: 'active' }),
     qc.invalidateQueries({ queryKey: ['approvals'], refetchType: 'active' }),
     qc.invalidateQueries({ queryKey: ['payment-requests'], refetchType: 'active' }),
+    // Credit ledger is separate — sync its queries without mixing into P&L math
+    qc.invalidateQueries({ queryKey: ['credit-facilities'], refetchType: 'active' }),
+    qc.invalidateQueries({ queryKey: ['credit-summary'], refetchType: 'active' }),
+    qc.invalidateQueries({ queryKey: ['credit-facility'], refetchType: 'active' }),
     qc.invalidateQueries({ queryKey: ['sidebar-badges'], refetchType: 'active' }),
   ]);
 }

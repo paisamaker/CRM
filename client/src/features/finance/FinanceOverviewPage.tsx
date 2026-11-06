@@ -11,6 +11,7 @@ import {
   Plus,
   RefreshCw,
   CreditCard,
+  HandCoins,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
@@ -20,6 +21,7 @@ import { BillsReceiptsTab } from './components/BillsReceiptsTab';
 import { SalaryManagementTab } from './components/SalaryManagementTab';
 import { FinancialReportsTab } from './components/FinancialReportsTab';
 import { PaymentRequestsTab } from './components/PaymentRequestsTab';
+import { CreditTab } from './components/CreditTab';
 import { FinanceCategoriesModal } from './components/FinanceCategoriesModal';
 import { TransactionModal } from './components/TransactionModal';
 import { BillModal } from './components/BillModal';
@@ -27,21 +29,38 @@ import { PaySalaryModal } from './components/PaySalaryModal';
 import { PaymentRequestModal } from './components/PaymentRequestModal';
 import { syncFinanceQueries } from './financeSync';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth';
 
-type FinanceTab = 'dashboard' | 'income' | 'expenses' | 'bills' | 'payment_requests' | 'salary' | 'reports';
+type FinanceTab =
+  | 'dashboard'
+  | 'income'
+  | 'expenses'
+  | 'bills'
+  | 'payment_requests'
+  | 'credit'
+  | 'salary'
+  | 'reports';
 
-const TABS: { id: FinanceTab; label: string; icon: typeof LayoutDashboard }[] = [
+const TABS: {
+  id: FinanceTab;
+  label: string;
+  icon: typeof LayoutDashboard;
+  roles?: string[];
+}[] = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
   { id: 'income', label: 'Income', icon: TrendingUp },
   { id: 'expenses', label: 'Expenses', icon: TrendingDown },
   { id: 'bills', label: 'Bills & Receipts', icon: Receipt },
   { id: 'payment_requests', label: 'Payment Requests', icon: CreditCard },
+  { id: 'credit', label: 'Credit & Loans', icon: HandCoins, roles: ['ceo', 'manager'] },
   { id: 'salary', label: 'Salary', icon: Users },
   { id: 'reports', label: 'Reports', icon: FileSpreadsheet },
 ];
 
 export function FinanceOverviewPage() {
   const qc = useQueryClient();
+  const role = useAuthStore((s) => s.user?.role);
+  const visibleTabs = TABS.filter((t) => !t.roles?.length || (role && t.roles.includes(role)));
   const [activeTab, setActiveTab] = useState<FinanceTab>('dashboard');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -84,7 +103,7 @@ export function FinanceOverviewPage() {
                 <span>Finance</span>
                 <span className="text-[var(--fg-muted)]">/</span>
                 <span className="capitalize text-[var(--brand-deep)] font-semibold">
-                  {TABS.find((t) => t.id === activeTab)?.label || activeTab}
+                  {visibleTabs.find((t) => t.id === activeTab)?.label || activeTab}
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--teal-border)] bg-[var(--teal-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--teal-text)]">
                   <span className="h-1.5 w-1.5 rounded-full bg-[var(--teal)]" />
@@ -149,7 +168,7 @@ export function FinanceOverviewPage() {
         </div>
 
         <nav className="flex gap-1 overflow-x-auto border-t border-[var(--border)] bg-[var(--bg)] px-3 py-2 scrollbar-none sm:px-4">
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
@@ -186,6 +205,7 @@ export function FinanceOverviewPage() {
         {activeTab === 'expenses' && <IncomeExpenseTab type="expense" />}
         {activeTab === 'bills' && <BillsReceiptsTab />}
         {activeTab === 'payment_requests' && <PaymentRequestsTab />}
+        {activeTab === 'credit' && role && ['ceo', 'manager'].includes(role) && <CreditTab />}
         {activeTab === 'salary' && <SalaryManagementTab />}
         {activeTab === 'reports' && <FinancialReportsTab />}
       </main>
