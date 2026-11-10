@@ -460,8 +460,8 @@ export function SettingsPage() {
                     <span>Cloudinary Optimization:</span>
                   </div>
                   <p>
-                    Uploaded images are automatically scaled, face-cropped to 400x400, and delivered
-                    via global high-speed CDN.
+                    Uploaded photos keep your full framed image (up to 1600px), optimized for quality,
+                    and delivered via Cloudinary CDN.
                   </p>
                 </div>
               </div>
@@ -740,7 +740,7 @@ export function SettingsPage() {
                   1. When users upload avatars or photos, the backend sends them to your Cloudinary cloud.
                 </p>
                 <p>
-                  2. Face detection auto-centers profile photos at 400x400 with automatic format compression.
+                  2. Profile photos keep the full framed image (up to 1600px) with automatic quality/format optimization.
                 </p>
                 <p>
                   3. If Cloudinary credentials are empty, images will seamlessly fallback to secure local storage.

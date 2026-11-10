@@ -5,11 +5,7 @@ import {
   RotateCw,
   RefreshCw,
   Check,
-  X,
-  Upload,
   Loader2,
-  Crop,
-  Sparkles,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
@@ -21,6 +17,11 @@ interface AvatarCropperModalProps {
   onCropComplete: (croppedFile: File) => void;
   isUploading?: boolean;
 }
+
+/** Viewport crop circle size (px). */
+const CROP_SIZE = 280;
+/** Exported avatar edge length — high-res square that keeps the full framed image. */
+const OUTPUT_SIZE = 1024;
 
 export function AvatarCropperModal({
   open,
@@ -35,19 +36,24 @@ export function AvatarCropperModal({
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+  const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
 
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Crop dimension inside the viewport (260px circle)
-  const CROP_SIZE = 240;
+  // Fit the FULL image inside the crop circle (contain), not cover/crop.
+  const baseScale =
+    naturalSize.w > 0 && naturalSize.h > 0
+      ? Math.min(CROP_SIZE / naturalSize.w, CROP_SIZE / naturalSize.h)
+      : 1;
 
-  // Load image object URL when imageFile changes
+  const displayWidth = naturalSize.w * baseScale * zoom;
+  const displayHeight = naturalSize.h * baseScale * zoom;
+
   useEffect(() => {
     if (!imageFile) {
       setImageUrl(null);
+      setNaturalSize({ w: 0, h: 0 });
       return;
     }
     const url = URL.createObjectURL(imageFile);
@@ -61,53 +67,69 @@ export function AvatarCropperModal({
     };
   }, [imageFile]);
 
-  // Update preview canvas whenever image, zoom, offset, or rotation changes
+  const drawToCanvas = useCallback(
+    (
+      canvas: HTMLCanvasElement,
+      size: number,
+      opts?: { circularClip?: boolean }
+    ) => {
+      const img = imageRef.current;
+      if (!img || !img.complete || img.naturalWidth === 0) return false;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return false;
+
+      canvas.width = size;
+      canvas.height = size;
+      ctx.clearRect(0, 0, size, size);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      if (opts?.circularClip) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+      }
+
+      const scaleFactor = size / CROP_SIZE;
+      const fit = Math.min(CROP_SIZE / img.naturalWidth, CROP_SIZE / img.naturalHeight);
+      const drawWidth = img.naturalWidth * fit * zoom * scaleFactor;
+      const drawHeight = img.naturalHeight * fit * zoom * scaleFactor;
+
+      // Fill with soft background so letterboxed areas aren't transparent black
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, size, size);
+
+      ctx.save();
+      ctx.translate(size / 2, size / 2);
+      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.drawImage(
+        img,
+        -drawWidth / 2 + offset.x * scaleFactor,
+        -drawHeight / 2 + offset.y * scaleFactor,
+        drawWidth,
+        drawHeight
+      );
+      ctx.restore();
+
+      if (opts?.circularClip) ctx.restore();
+      return true;
+    },
+    [zoom, rotation, offset]
+  );
+
   const updatePreview = useCallback(() => {
-    const img = imageRef.current;
     const canvas = previewCanvasRef.current;
-    if (!img || !canvas || !img.complete || img.naturalWidth === 0) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const size = 120;
-    canvas.width = size;
-    canvas.height = size;
-    ctx.clearRect(0, 0, size, size);
-
-    // Circular clipping
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-
-    const scaleFactor = size / CROP_SIZE;
-
-    ctx.translate(size / 2, size / 2);
-    ctx.rotate((rotation * Math.PI) / 180);
-
-    const baseScale = Math.max(CROP_SIZE / img.naturalWidth, CROP_SIZE / img.naturalHeight);
-    const drawWidth = img.naturalWidth * baseScale * zoom * scaleFactor;
-    const drawHeight = img.naturalHeight * baseScale * zoom * scaleFactor;
-
-    ctx.drawImage(
-      img,
-      -drawWidth / 2 + offset.x * scaleFactor,
-      -drawHeight / 2 + offset.y * scaleFactor,
-      drawWidth,
-      drawHeight
-    );
-    ctx.restore();
-  }, [zoom, rotation, offset]);
+    if (!canvas) return;
+    drawToCanvas(canvas, 120, { circularClip: true });
+  }, [drawToCanvas]);
 
   useEffect(() => {
-    if (imageUrl) {
-      updatePreview();
-    }
-  }, [imageUrl, zoom, rotation, offset, updatePreview]);
+    if (imageUrl && naturalSize.w > 0) updatePreview();
+  }, [imageUrl, naturalSize, zoom, rotation, offset, updatePreview]);
 
-  // Mouse drag handlers
   const handleMouseDown = (e: MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(true);
@@ -122,17 +144,13 @@ export function AvatarCropperModal({
     });
   };
 
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
+  const handleMouseUp = () => setIsDragging(false);
 
-  // Touch handlers for mobile / tablet
   const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
-    if (e.touches.length === 1) {
-      const touch = e.touches[0];
-      setIsDragging(true);
-      setDragStart({ x: touch.clientX - offset.x, y: touch.clientY - offset.y });
-    }
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    setIsDragging(true);
+    setDragStart({ x: touch.clientX - offset.x, y: touch.clientY - offset.y });
   };
 
   const handleTouchMove = (e: TouchEvent<HTMLDivElement>) => {
@@ -144,55 +162,19 @@ export function AvatarCropperModal({
     });
   };
 
-  const handleTouchEnd = () => {
-    setIsDragging(false);
-  };
+  const handleTouchEnd = () => setIsDragging(false);
 
-  // Rotate 90 degrees clockwise
-  const handleRotate = () => {
-    setRotation((r) => (r + 90) % 360);
-  };
+  const handleRotate = () => setRotation((r) => (r + 90) % 360);
 
-  // Reset adjustments
   const handleReset = () => {
     setZoom(1);
     setRotation(0);
     setOffset({ x: 0, y: 0 });
   };
 
-  // Generate cropped output file (512x512 crisp square/circle)
   const handleCropAndSave = () => {
-    const img = imageRef.current;
-    if (!img) return;
-
     const exportCanvas = document.createElement('canvas');
-    const OUTPUT_SIZE = 512;
-    exportCanvas.width = OUTPUT_SIZE;
-    exportCanvas.height = OUTPUT_SIZE;
-
-    const ctx = exportCanvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    ctx.save();
-    ctx.translate(OUTPUT_SIZE / 2, OUTPUT_SIZE / 2);
-    ctx.rotate((rotation * Math.PI) / 180);
-
-    const scaleFactor = OUTPUT_SIZE / CROP_SIZE;
-    const baseScale = Math.max(CROP_SIZE / img.naturalWidth, CROP_SIZE / img.naturalHeight);
-    const drawWidth = img.naturalWidth * baseScale * zoom * scaleFactor;
-    const drawHeight = img.naturalHeight * baseScale * zoom * scaleFactor;
-
-    ctx.drawImage(
-      img,
-      -drawWidth / 2 + offset.x * scaleFactor,
-      -drawHeight / 2 + offset.y * scaleFactor,
-      drawWidth,
-      drawHeight
-    );
-    ctx.restore();
+    if (!drawToCanvas(exportCanvas, OUTPUT_SIZE)) return;
 
     exportCanvas.toBlob(
       (blob) => {
@@ -204,7 +186,7 @@ export function AvatarCropperModal({
         onCropComplete(croppedFile);
       },
       'image/jpeg',
-      0.92
+      0.94
     );
   };
 
@@ -213,14 +195,12 @@ export function AvatarCropperModal({
       open={open}
       onClose={isUploading ? () => {} : onClose}
       title="Adjust Profile Photo"
-      description="Drag to reposition, use the zoom slider or rotate before uploading."
+      description="Full photo fits by default. Drag, zoom, or rotate if you want a tighter frame."
       size="md"
     >
       <div className="space-y-4">
-        {/* Main Crop Area */}
-        <div className="relative flex flex-col items-center justify-center rounded-2xl bg-slate-900/90 p-4 select-none overflow-hidden">
+        <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-2xl bg-slate-900/90 p-4 select-none">
           <div
-            ref={containerRef}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -228,45 +208,49 @@ export function AvatarCropperModal({
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            className="relative h-[280px] w-full max-w-[320px] flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing rounded-xl"
+            className="relative flex h-[320px] w-full max-w-[360px] cursor-grab items-center justify-center overflow-hidden rounded-xl active:cursor-grabbing"
           >
-            {/* Background image being manipulated */}
             {imageUrl && (
               <img
                 ref={imageRef}
                 src={imageUrl}
                 alt="Source"
                 draggable={false}
-                onLoad={updatePreview}
-                style={{
-                  transform: `translate(${offset.x}px, ${offset.y}px) rotate(${rotation}deg) scale(${zoom})`,
-                  transformOrigin: 'center center',
-                  maxHeight: 'none',
-                  maxWidth: 'none',
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+                  updatePreview();
                 }}
-                className="pointer-events-none transition-transform duration-75 ease-out select-none"
+                style={{
+                  width: displayWidth || undefined,
+                  height: displayHeight || undefined,
+                  maxWidth: 'none',
+                  maxHeight: 'none',
+                  transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) rotate(${rotation}deg)`,
+                  transformOrigin: 'center center',
+                }}
+                className="pointer-events-none absolute left-1/2 top-1/2 select-none transition-[width,height] duration-75 ease-out"
               />
             )}
 
-            {/* Dark vignette overlay outside the crop circle */}
+            {/* Crop circle guide — full image is fitted inside this by default */}
             <div
-              className="pointer-events-none absolute inset-0 shadow-[0_0_0_9999px_rgba(15,23,42,0.7)] rounded-full"
+              className="pointer-events-none absolute rounded-full shadow-[0_0_0_9999px_rgba(15,23,42,0.72)]"
               style={{
                 width: `${CROP_SIZE}px`,
                 height: `${CROP_SIZE}px`,
                 top: '50%',
                 left: '50%',
                 transform: 'translate(-50%, -50%)',
-                border: '2px solid rgba(255, 255, 255, 0.85)',
+                border: '2px solid rgba(255, 255, 255, 0.9)',
               }}
             >
-              {/* Inner rule-of-thirds grid */}
-              <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 opacity-30 pointer-events-none">
-                <div className="border-r border-b border-white" />
-                <div className="border-r border-b border-white" />
+              <div className="pointer-events-none absolute inset-0 grid grid-cols-3 grid-rows-3 opacity-25">
+                <div className="border-b border-r border-white" />
+                <div className="border-b border-r border-white" />
                 <div className="border-b border-white" />
-                <div className="border-r border-b border-white" />
-                <div className="border-r border-b border-white" />
+                <div className="border-b border-r border-white" />
+                <div className="border-b border-r border-white" />
                 <div className="border-b border-white" />
                 <div className="border-r border-white" />
                 <div className="border-r border-white" />
@@ -276,18 +260,16 @@ export function AvatarCropperModal({
           </div>
 
           <span className="mt-2 text-[11px] font-medium text-slate-400">
-            Click &amp; drag photo to center your face
+            Full image is shown — zoom in only if you want a closer crop
           </span>
         </div>
 
-        {/* Adjustments & Controls Bar */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-3">
-          {/* Zoom Slider */}
+        <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
           <div className="flex items-center gap-3">
-            <ZoomOut className="h-4 w-4 text-slate-400 shrink-0" />
+            <ZoomOut className="h-4 w-4 shrink-0 text-slate-400" />
             <input
               type="range"
-              min="0.8"
+              min="1"
               max="3"
               step="0.05"
               value={zoom}
@@ -295,13 +277,12 @@ export function AvatarCropperModal({
               className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-[#00a884]"
               aria-label="Zoom scale"
             />
-            <ZoomIn className="h-4 w-4 text-slate-400 shrink-0" />
+            <ZoomIn className="h-4 w-4 shrink-0 text-slate-400" />
             <span className="w-10 text-right text-xs font-semibold text-slate-600">
               {Math.round(zoom * 100)}%
             </span>
           </div>
 
-          {/* Quick Buttons: Rotate & Reset + Circular Preview */}
           <div className="flex items-center justify-between border-t border-slate-200/80 pt-2.5">
             <div className="flex items-center gap-2">
               <Button
@@ -309,7 +290,7 @@ export function AvatarCropperModal({
                 variant="outline"
                 size="sm"
                 onClick={handleRotate}
-                className="h-8 gap-1.5 text-xs text-slate-700 bg-white"
+                className="h-8 gap-1.5 bg-white text-xs text-slate-700"
                 title="Rotate 90 degrees"
               >
                 <RotateCw className="h-3.5 w-3.5" />
@@ -321,7 +302,7 @@ export function AvatarCropperModal({
                 variant="outline"
                 size="sm"
                 onClick={handleReset}
-                className="h-8 gap-1.5 text-xs text-slate-700 bg-white"
+                className="h-8 gap-1.5 bg-white text-xs text-slate-700"
                 title="Reset zoom & position"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
@@ -329,18 +310,16 @@ export function AvatarCropperModal({
               </Button>
             </div>
 
-            {/* Live circular preview thumbnail */}
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-medium text-slate-400">Preview:</span>
-              <div className="h-9 w-9 rounded-full overflow-hidden border-2 border-white shadow-xs bg-slate-200">
+              <div className="h-9 w-9 overflow-hidden rounded-full border-2 border-white bg-slate-200 shadow-xs">
                 <canvas ref={previewCanvasRef} className="h-full w-full object-cover" />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-2">
           <Button
             type="button"
             variant="outline"
@@ -354,7 +333,7 @@ export function AvatarCropperModal({
             type="button"
             onClick={handleCropAndSave}
             disabled={isUploading}
-            className="bg-[#00a884] hover:bg-[#008069] text-white text-xs gap-1.5 shadow-xs"
+            className="gap-1.5 bg-[#00a884] text-xs text-white shadow-xs hover:bg-[#008069]"
           >
             {isUploading ? (
               <>

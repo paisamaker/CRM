@@ -51,9 +51,10 @@ export async function uploadImageToCloudinary(
     const result = await cloudinary.uploader.upload(filePath, {
       folder,
       resource_type: 'image',
+      // Keep the user's full crop — do not face-crop or hard-resize to a tiny square.
       transformation: [
-        { width: 400, height: 400, crop: 'fill', gravity: 'face' },
-        { quality: 'auto', fetch_format: 'auto' },
+        { width: 1600, height: 1600, crop: 'limit' },
+        { quality: 'auto:good', fetch_format: 'auto' },
       ],
     });
 
