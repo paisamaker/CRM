@@ -1061,12 +1061,15 @@ export function EmployeeProfileDrawer({
                     const isMissing = wd?.status === 'missing_checkout';
                     const isSelected = selectedDay?.date === cell.dateStr;
                     const isHoliday = !!cell.holidayName;
+                    const isLeave = wd?.status === 'on_leave';
                     const isSunday = cell.isSunday;
                     const sundayExtraWork = isSunday && mins > 0;
 
                     let bgStyle = 'bg-slate-50 border-slate-200/70 text-slate-500';
                     if (isHoliday && !sundayExtraWork) {
                       bgStyle = 'bg-amber-100 border-amber-300 text-amber-950';
+                    } else if (isLeave) {
+                      bgStyle = 'bg-sky-100 border-sky-300 text-sky-950';
                     } else if (sundayExtraWork) {
                       // Sunday with logged hours → green extra work
                       if (mins < 240) {
@@ -1149,6 +1152,8 @@ export function EmployeeProfileDrawer({
                         <div className="text-[10px] leading-tight">
                           {isHoliday && !sundayExtraWork ? (
                             <span className="line-clamp-2 font-semibold">{cell.holidayName}</span>
+                          ) : isLeave ? (
+                            <span className="font-semibold">Leave</span>
                           ) : sundayExtraWork ? (
                             <span className="font-bold">{formatHours(mins)}</span>
                           ) : isSunday ? (

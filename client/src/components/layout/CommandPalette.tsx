@@ -28,6 +28,7 @@ const links: Array<{
   { label: 'Alerts', to: '/alerts' },
   { label: 'Files', to: '/files', resource: 'files' },
   { label: 'Attendance', to: '/attendance', resource: 'attendance' },
+  { label: 'Leave Applications', to: '/leaves', resource: 'leaves' },
   { label: 'Chat', to: '/chat', resource: 'chat' },
   { label: 'Meetings', to: '/meetings', resource: 'meetings' },
   { label: 'Users', to: '/users', resource: 'users' },

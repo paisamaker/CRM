@@ -39,7 +39,8 @@ export type Resource =
   | 'budgets'
   | 'attendance'
   | 'teams'
-  | 'meetings';
+  | 'meetings'
+  | 'leaves';
 
 type PermissionMap = Record<Role, Partial<Record<Resource, Action[]>>>;
 
@@ -78,6 +79,7 @@ export const PERMISSIONS: PermissionMap = {
     attendance: [...CRUD, 'manage'],
     teams: ALL,
     meetings: CRUD,
+    leaves: ['read', 'approve', 'manage'],
   },
   /**
    * Manager ≈ employee + bill/invoice drafting.
@@ -106,6 +108,7 @@ export const PERMISSIONS: PermissionMap = {
     attendance: ['create', 'read', 'update'],
     teams: CRUD,
     meetings: CRUD,
+    leaves: ['create', 'read'],
   },
   finance: {
     dashboard_employee: READ,
@@ -132,6 +135,7 @@ export const PERMISSIONS: PermissionMap = {
     attendance: ['create', 'read', 'update'],
     teams: READ,
     meetings: CRUD,
+    leaves: ['create', 'read'],
   },
   employee: {
     dashboard_employee: READ,
@@ -151,6 +155,7 @@ export const PERMISSIONS: PermissionMap = {
     attendance: ['create', 'read', 'update'],
     teams: READ,
     meetings: CRUD,
+    leaves: ['create', 'read'],
   },
 };
 

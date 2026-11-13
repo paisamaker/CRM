@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Video, CheckSquare, MessageSquare, Wallet, Info } from 'lucide-react';
+import { Bell, Video, CheckSquare, MessageSquare, Wallet, Info, Plane } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
@@ -21,6 +21,7 @@ type Note = {
 function noteIcon(type?: string) {
   const t = (type || '').toLowerCase();
   if (t.includes('meeting')) return Video;
+  if (t.includes('leave')) return Plane;
   if (t.includes('chat') || t.includes('message')) return MessageSquare;
   if (t.includes('task') || t.includes('project') || t.includes('approval')) return CheckSquare;
   if (t.includes('payment') || t.includes('payroll') || t.includes('invoice') || t.includes('expense')) {
@@ -32,6 +33,7 @@ function noteIcon(type?: string) {
 function noteTone(type?: string) {
   const t = (type || '').toLowerCase();
   if (t.includes('meeting')) return 'bg-teal-100 text-teal-700';
+  if (t.includes('leave')) return 'bg-sky-100 text-sky-800';
   if (t.includes('chat')) return 'bg-sky-100 text-sky-700';
   if (t.includes('payment') || t.includes('payroll')) return 'bg-amber-100 text-amber-800';
   return 'bg-slate-100 text-slate-600';

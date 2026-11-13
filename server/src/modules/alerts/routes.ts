@@ -9,6 +9,7 @@ import { Approval } from '../../models/Approval.js';
 import { PaymentRequest } from '../../models/PaymentRequest.js';
 import { Conversation } from '../../models/Conversation.js';
 import { ChatMessage } from '../../models/ChatMessage.js';
+import { LeaveRequest } from '../../models/LeaveRequest.js';
 import { paginate } from '../../utils/pagination.js';
 import { NotFoundError } from '../../utils/AppError.js';
 import { runAlertEngine } from '../../jobs/alertEngine.js';
@@ -129,7 +130,7 @@ router.get(
     const role = req.user!.role;
     const uid = new mongoose.Types.ObjectId(userId);
 
-    const [pendingApprovals, paymentActionable, projectNotifs, meetingNotifs, conversationIds] =
+    const [pendingApprovals, paymentActionable, projectNotifs, meetingNotifs, pendingLeaves, conversationIds] =
       await Promise.all([
         role === 'ceo'
           ? Approval.countDocuments({
@@ -147,6 +148,9 @@ router.get(
             }),
         Notification.countDocuments(projectNotifFilter(userId)),
         Notification.countDocuments(meetingNotifFilter(userId)),
+        role === 'ceo'
+          ? LeaveRequest.countDocuments({ status: 'pending' })
+          : Promise.resolve(0),
         Conversation.find({ members: uid }).select('_id').lean(),
       ]);
 
@@ -170,6 +174,7 @@ router.get(
         approvals: pendingApprovals,
         chat,
         meetings: meetingNotifs,
+        leaves: pendingLeaves,
         updatedAt: new Date().toISOString(),
       },
     });
@@ -184,7 +189,7 @@ router.post(
     const body = z
       .object({
         scopes: z
-          .array(z.enum(['projects', 'paymentRequests', 'approvals', 'chat', 'meetings']))
+          .array(z.enum(['projects', 'paymentRequests', 'approvals', 'chat', 'meetings', 'leaves']))
           .min(1),
       })
       .parse(req.body);
@@ -199,9 +204,9 @@ router.post(
       if (scope === 'paymentRequests') filter = paymentNotifFilter(userId);
       if (scope === 'approvals') filter = approvalNotifFilter(userId);
       if (scope === 'meetings') filter = meetingNotifFilter(userId);
-      // chat unread is message-level; opening Chat page handles read receipts per conversation
-      if (scope === 'chat') {
-        results.chat = 0;
+      // chat / leave queue badges are entity counts, not notification ack
+      if (scope === 'chat' || scope === 'leaves') {
+        results[scope] = 0;
         continue;
       }
       if (!filter) continue;

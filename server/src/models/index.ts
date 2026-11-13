@@ -27,3 +27,4 @@ export * from './ScannedDocument.js';
 export * from './CreditFacility.js';
 export * from './CreditEntry.js';
 export * from './Meeting.js';
+export * from './LeaveRequest.js';

@@ -23,6 +23,7 @@ import {
   CreditCard,
   HandCoins,
   Video,
+  Plane,
   X,
   LogOut,
 } from 'lucide-react';
@@ -38,7 +39,7 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   roles: string[];
   resource?: string;
-  badgeKey?: 'projects' | 'paymentRequests' | 'approvals' | 'chat' | 'meetings';
+  badgeKey?: 'projects' | 'paymentRequests' | 'approvals' | 'chat' | 'meetings' | 'leaves';
 }
 
 type SidebarBadges = {
@@ -47,6 +48,7 @@ type SidebarBadges = {
   approvals: number;
   chat: number;
   meetings: number;
+  leaves: number;
 };
 
 function formatBadge(count: number): string | number | null {
@@ -79,6 +81,14 @@ const sections: NavSection[] = [
       { to: '/tasks', label: 'Tasks & Workflow', icon: CheckSquare, roles: ['ceo', 'manager', 'finance', 'employee'] },
       { to: '/projects', label: 'Projects', icon: Briefcase, roles: ['ceo', 'manager', 'finance', 'employee'], badgeKey: 'projects' },
       { to: '/attendance', label: 'Attendance', icon: Clock3, roles: ['ceo', 'manager', 'finance', 'employee'], resource: 'attendance' },
+      {
+        to: '/leaves',
+        label: 'Leave Applications',
+        icon: Plane,
+        roles: ['ceo', 'manager', 'finance', 'employee'],
+        resource: 'leaves',
+        badgeKey: 'leaves',
+      },
       { to: '/tasks/monitoring', label: 'Task Monitor', icon: ClipboardList, roles: ['ceo'], resource: 'tasks_monitoring' },
     ],
   },
@@ -138,6 +148,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
     approvals: badges?.approvals || 0,
     chat: badges?.chat || 0,
     meetings: badges?.meetings || 0,
+    leaves: badges?.leaves || 0,
   };
 
   async function ackSidebarScope(scope?: NavItem['badgeKey']) {

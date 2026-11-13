@@ -14,6 +14,7 @@ import {
   generateYearCalendarGrid,
   ACTIVITY_COLORS,
   HOLIDAY_COLOR,
+  LEAVE_COLOR,
   SUNDAY_COLOR,
   formatDateReadable,
   formatDurationMinutes,
@@ -228,11 +229,14 @@ export function WorkforceHeatmap({
                     const level = dayData?.level ?? 0;
                     const isSelected = selectedDate === day.date;
                     const isHoliday = !!(dayData?.isHoliday || dayData?.holidayName);
+                    const isLeave =
+                      dayData?.status === 'on_leave' || (dayData?.onLeaveCount || 0) > 0;
                     const isSun = day.dayOfWeek === 6 || !!dayData?.isSunday;
                     let cellBg = day.isFuture
                       ? '#F8FAFC'
                       : ACTIVITY_COLORS[level as keyof typeof ACTIVITY_COLORS];
                     if (!day.isFuture && isHoliday) cellBg = HOLIDAY_COLOR;
+                    else if (!day.isFuture && isLeave) cellBg = LEAVE_COLOR;
                     else if (!day.isFuture && isSun && level === 0) cellBg = SUNDAY_COLOR;
 
                     return (
@@ -260,6 +264,8 @@ export function WorkforceHeatmap({
                         aria-label={
                           isHoliday
                             ? `${day.date}: Holiday — ${dayData?.holidayName || 'Off'}`
+                            : isLeave
+                              ? `${day.date}: On leave${dayData?.onLeaveCount ? ` (${dayData.onLeaveCount})` : ''}`
                             : isSun && (dayData?.totalMinutes || 0) > 0
                               ? `${day.date}: Sunday extra work ${dayData?.totalHours || 0}h`
                               : isSun
@@ -432,6 +438,10 @@ export function WorkforceHeatmap({
           <span className="inline-flex items-center gap-1 text-slate-500">
             <span className="h-3 w-3 rounded-xs border border-amber-200" style={{ backgroundColor: HOLIDAY_COLOR }} />
             Holiday{holidays.length ? ` (${holidays.length})` : ''}
+          </span>
+          <span className="inline-flex items-center gap-1 text-slate-500">
+            <span className="h-3 w-3 rounded-xs border border-sky-300" style={{ backgroundColor: LEAVE_COLOR }} />
+            Leave
           </span>
         </div>
       </div>

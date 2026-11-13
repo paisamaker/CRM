@@ -91,6 +91,12 @@ export function EmployeeDirectory({
             Missing Check-out
           </span>
         );
+      case 'on_leave':
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/60 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+            On Leave
+          </span>
+        );
       default:
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">

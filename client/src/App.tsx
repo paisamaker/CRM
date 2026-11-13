@@ -54,6 +54,9 @@ const MeetingsPage = lazy(() =>
 const MeetingRoomPage = lazy(() =>
   import('@/features/meetings/MeetingRoomPage').then((m) => ({ default: m.MeetingRoomPage }))
 );
+const LeavesPage = lazy(() =>
+  import('@/features/leaves/LeavesPage').then((m) => ({ default: m.LeavesPage }))
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -131,6 +134,9 @@ export default function App() {
                 <Route path="/alerts" element={<AlertsPage />} />
                 <Route path="/files" element={<FilesPage />} />
                 <Route path="/attendance" element={<AttendancePage />} />
+                <Route element={<ProtectedRoute resource="leaves" />}>
+                  <Route path="/leaves" element={<LeavesPage />} />
+                </Route>
                 <Route path="/chat" element={<ChatPage />} />
                 <Route element={<ProtectedRoute resource="meetings" />}>
                   <Route path="/meetings" element={<MeetingsPage />} />

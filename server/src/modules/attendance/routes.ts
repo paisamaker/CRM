@@ -57,6 +57,13 @@ router.post(
     const date = companyDateKey();
     const now = new Date();
     const existing = await Attendance.findOne({ user: req.user!.id, date });
+    if (existing?.status === 'on_leave') {
+      throw new AppError(
+        'You are on approved leave today and cannot check in.',
+        400,
+        'ON_LEAVE'
+      );
+    }
     if (existing?.checkInAt && !existing.checkOutAt) {
       throw new AppError('Already checked in. Check out before starting a new session.', 400, 'ALREADY_CHECKED_IN');
     }
@@ -334,11 +341,14 @@ router.get(
       day.totalMinutes += mins;
       totalMinutes += mins;
 
-      if (mins > 0 || r.status === 'checked_in' || r.status === 'checked_out') {
+      if (mins > 0 || r.status === 'checked_in' || r.status === 'checked_out' || r.status === 'on_leave') {
         day.activeEmployees += 1;
         activeDaysSet.add(d);
       }
       if (r.status === 'checked_in') day.checkedInCount += 1;
+      if (r.status === 'on_leave') {
+        day.onLeaveCount = (day.onLeaveCount || 0) + 1;
+      }
       if (r.status === 'missing_checkout') {
         day.missingCheckoutCount += 1;
         missingCheckouts += 1;
@@ -368,13 +378,15 @@ router.get(
       day.totalHours = Math.round((day.totalMinutes / 60) * 10) / 10;
       const hours = day.totalMinutes / 60;
       if (targetUserId) {
-        if (hours === 0 && day.status !== 'checked_in') day.level = 0;
+        if (day.status === 'on_leave') day.level = 0;
+        else if (hours === 0 && day.status !== 'checked_in') day.level = 0;
         else if (hours < 2) day.level = 1;
         else if (hours < 4) day.level = 2;
         else if (hours < 6) day.level = 3;
         else day.level = 4;
       } else {
-        if (hours === 0 && day.checkedInCount === 0) day.level = 0;
+        if (hours === 0 && day.checkedInCount === 0 && !(day.onLeaveCount > 0)) day.level = 0;
+        else if (hours === 0 && day.onLeaveCount > 0) day.level = 0;
         else if (hours < 4) day.level = 1;
         else if (hours < 16) day.level = 2;
         else if (hours < 36) day.level = 3;
@@ -440,9 +452,9 @@ router.get(
     const rangeEnd = isCurrentYear ? now : new Date(year, 11, 31);
     const expectedWorkingDays = countExpectedWorkDays(rangeStart, rangeEnd, holidayMap);
 
-    // Only count attended slots on expected work days (exclude Sundays + holidays)
+    // Count present + approved leave on expected work days (exclude Sundays + holidays)
     const totalAttendedSlots = records.filter((r) => {
-      if (!['checked_in', 'checked_out', 'corrected'].includes(r.status)) return false;
+      if (!['checked_in', 'checked_out', 'corrected', 'on_leave'].includes(r.status)) return false;
       try {
         return isExpectedWorkDay(parseDateKey(r.date), holidayMap);
       } catch {
@@ -615,7 +627,13 @@ router.get(
             return true;
           }
         })();
-        if (onWorkDay && (mins > 0 || r.status === 'checked_in' || r.status === 'checked_out')) {
+        if (
+          onWorkDay &&
+          (mins > 0 ||
+            r.status === 'checked_in' ||
+            r.status === 'checked_out' ||
+            r.status === 'on_leave')
+        ) {
           activeDays += 1;
         }
         if (r.status === 'missing_checkout') missingCheckouts += 1;

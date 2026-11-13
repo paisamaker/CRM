@@ -52,6 +52,8 @@ export const ACTIVITY_COLORS = {
 
 /** Soft amber for company holidays */
 export const HOLIDAY_COLOR = '#FDE68A';
+/** Soft sky for approved personal leave */
+export const LEAVE_COLOR = '#BAE6FD';
 /** Dark grey for Sundays / weekly offs */
 export const SUNDAY_COLOR = '#475569';
 

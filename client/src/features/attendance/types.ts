@@ -14,6 +14,7 @@ export interface DayHeatmapData {
   activeEmployees: number;
   checkedInCount: number;
   missingCheckoutCount: number;
+  onLeaveCount?: number;
   workLogCount: number;
   level: 0 | 1 | 2 | 3 | 4;
   checkInAt?: string;

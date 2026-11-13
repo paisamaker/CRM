@@ -18,6 +18,7 @@ const titles: Record<string, string> = {
   '/tasks/monitoring': 'Task Monitoring',
   '/projects': 'Projects',
   '/attendance': 'Attendance',
+  '/leaves': 'Leave Applications',
   '/chat': 'Chat',
   '/meetings': 'Meetings',
   '/clients': 'Clients',
