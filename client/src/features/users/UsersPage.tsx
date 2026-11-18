@@ -40,6 +40,7 @@ type UserRow = {
   designation?: string;
   phone?: string;
   joiningDate?: string;
+  avatar?: string;
 };
 
 type AccessMode = 'password' | 'invite';
@@ -385,6 +386,7 @@ export function UsersPage() {
                 >
                   <UserAvatar
                     name={u.name}
+                    avatar={u.avatar}
                     className="h-12 w-12 shrink-0 rounded-full text-sm shadow-2xs"
                   />
                   <div className="min-w-0 flex-1">
@@ -464,7 +466,8 @@ export function UsersPage() {
                           <div className="flex items-center gap-3">
                             <UserAvatar
                               name={u.name}
-                              className="h-9 w-9 shrink-0 rounded-full text-xs shadow-2xs"
+                              avatar={u.avatar}
+                              className="h-9 w-9 shrink-0 rounded-full object-cover text-xs shadow-2xs"
                             />
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 font-bold text-slate-900 transition group-hover:text-teal-700">
