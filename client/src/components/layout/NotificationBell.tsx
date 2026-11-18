@@ -10,7 +10,6 @@ import {
   Info,
   Plane,
   X,
-  CheckCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -115,7 +114,6 @@ export function NotificationBell() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close();
     };
-    // delay so the opening click doesn't immediately close
     const t = window.setTimeout(() => {
       document.addEventListener('mousedown', onPointer);
       document.addEventListener('touchstart', onPointer);
@@ -152,134 +150,141 @@ export function NotificationBell() {
       </Button>
 
       {open ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Recent notifications"
-          className="absolute right-0 top-[calc(100%+8px)] z-[60] flex w-[min(92vw,360px)] max-h-[min(70vh,420px)] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-lg)]"
-        >
-          {/* Header with X */}
-          <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2.5">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-[var(--fg)]">Notifications</h2>
-                {unread > 0 ? (
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-[var(--brand)] px-1.5 text-[10px] font-semibold text-white">
-                    {unread > 99 ? '99+' : unread}
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-[11px] text-[var(--fg-muted)]">
-                {unread > 0 ? `${unread} unread` : 'Recent updates'}
-              </p>
-            </div>
+        <>
+          {/* Dim backdrop on small screens */}
+          <div
+            className="fixed inset-0 z-[55] bg-black/25 sm:hidden"
+            onClick={close}
+            aria-hidden
+          />
 
-            {unread > 0 ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Recent notifications"
+            className={cn(
+              'z-[60] flex flex-col overflow-hidden border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-lg)]',
+              // Mobile: fixed card under topbar, full usable width — never clipped
+              'fixed left-3 right-3 top-[3.75rem] max-h-[min(72dvh,480px)] rounded-xl',
+              // Desktop: dropdown under the bell
+              'sm:absolute sm:left-auto sm:right-0 sm:top-[calc(100%+8px)] sm:w-[360px] sm:max-h-[min(70vh,440px)]'
+            )}
+          >
+            {/* Header */}
+            <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3.5 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="truncate text-sm font-semibold text-[var(--fg)]">Notifications</h2>
+                  {unread > 0 ? (
+                    <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md bg-[var(--brand)] px-1.5 text-[10px] font-semibold text-white">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-0.5 truncate text-[11px] text-[var(--fg-muted)]">
+                  {unread > 0 ? `${unread} unread` : 'Recent updates'}
+                </p>
+              </div>
+
+              {unread > 0 ? (
+                <button
+                  type="button"
+                  className="shrink-0 rounded-md px-2 py-1.5 text-[11px] font-semibold text-[var(--brand)] hover:bg-[var(--brand-soft)]"
+                  onClick={() => markRead.mutate({ all: true })}
+                  disabled={markRead.isPending}
+                >
+                  Mark all read
+                </button>
+              ) : null}
+
               <button
                 type="button"
-                className="rounded-md px-2 py-1.5 text-[11px] font-semibold text-[var(--brand)] hover:bg-[var(--brand-soft)]"
-                onClick={() => markRead.mutate({ all: true })}
-                disabled={markRead.isPending}
+                onClick={close}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--fg-muted)] transition hover:bg-[var(--bg-subtle)] hover:text-[var(--fg)]"
+                aria-label="Close notifications"
+                title="Close"
               >
-                Mark all read
+                <X className="h-4 w-4" strokeWidth={2.5} />
               </button>
-            ) : null}
+            </div>
 
-            <button
-              type="button"
-              onClick={close}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--fg-muted)] transition hover:bg-[var(--bg-subtle)] hover:text-[var(--fg)]"
-              aria-label="Close"
-              title="Close"
-            >
-              <X className="h-4 w-4" strokeWidth={2.5} />
-            </button>
-          </div>
-
-          {/* Recent list */}
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-            {isLoading ? (
-              <div className="px-4 py-10 text-center text-xs text-[var(--fg-muted)]">Loading…</div>
-            ) : items.length === 0 ? (
-              <div className="px-4 py-10 text-center">
-                <Bell className="mx-auto h-5 w-5 text-slate-300" />
-                <p className="mt-2 text-sm font-medium text-[var(--fg)]">No notifications</p>
-                <p className="mt-0.5 text-xs text-[var(--fg-muted)]">You’re all caught up.</p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-[var(--divider)]">
-                {items.map((n) => {
-                  const Icon = noteIcon(n.type);
-                  const unreadItem = !n.readAt;
-                  return (
-                    <li key={n._id}>
-                      <button
-                        type="button"
-                        className={cn(
-                          'flex w-full items-start gap-2.5 px-3 py-3 text-left transition hover:bg-[var(--bg-subtle)]',
-                          unreadItem && 'bg-[var(--brand-soft)]/60'
-                        )}
-                        onClick={async () => {
-                          if (unreadItem) await markRead.mutateAsync({ ids: [n._id] });
-                          close();
-                          if (n.link) navigate(n.link);
-                          else navigate('/alerts?tab=notifications');
-                        }}
-                      >
-                        <span
+            {/* List */}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              {isLoading ? (
+                <div className="px-4 py-10 text-center text-xs text-[var(--fg-muted)]">Loading…</div>
+              ) : items.length === 0 ? (
+                <div className="px-4 py-10 text-center">
+                  <Bell className="mx-auto h-5 w-5 text-slate-300" />
+                  <p className="mt-2 text-sm font-medium text-[var(--fg)]">No notifications</p>
+                  <p className="mt-0.5 text-xs text-[var(--fg-muted)]">You’re all caught up.</p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-[var(--divider)]">
+                  {items.map((n) => {
+                    const Icon = noteIcon(n.type);
+                    const unreadItem = !n.readAt;
+                    return (
+                      <li key={n._id}>
+                        <button
+                          type="button"
                           className={cn(
-                            'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-                            noteTone(n.type)
+                            'flex w-full items-start gap-3 px-3.5 py-3 text-left transition hover:bg-[var(--bg-subtle)]',
+                            unreadItem && 'bg-[var(--brand-soft)]/50'
                           )}
+                          onClick={async () => {
+                            if (unreadItem) await markRead.mutateAsync({ ids: [n._id] });
+                            close();
+                            if (n.link) navigate(n.link);
+                            else navigate('/alerts?tab=notifications');
+                          }}
                         >
-                          <Icon className="h-3.5 w-3.5" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="truncate text-[13px] font-semibold text-[var(--fg)]">
-                              {n.title}
-                            </span>
-                            {unreadItem ? (
-                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand)]" />
-                            ) : null}
+                          <span
+                            className={cn(
+                              'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
+                              noteTone(n.type)
+                            )}
+                          >
+                            <Icon className="h-3.5 w-3.5" />
+                          </span>
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <div className="flex items-center gap-1.5">
+                              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--fg)]">
+                                {n.title}
+                              </span>
+                              {unreadItem ? (
+                                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand)]" />
+                              ) : null}
+                            </div>
+                            <p className="mt-0.5 line-clamp-2 break-words text-[12px] leading-snug text-[var(--fg-secondary)]">
+                              {n.message}
+                            </p>
+                            <p className="mt-1 text-[10px] text-[var(--fg-muted)]">
+                              {formatDateTime(n.createdAt)}
+                            </p>
                           </div>
-                          <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-[var(--fg-secondary)]">
-                            {n.message}
-                          </p>
-                          <p className="mt-1 text-[10px] text-[var(--fg-muted)]">
-                            {formatDateTime(n.createdAt)}
-                          </p>
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
 
-          {/* Footer */}
-          <div className="flex shrink-0 items-center gap-2 border-t border-[var(--border)] bg-[var(--bg-subtle)] px-2.5 py-2">
-            <button
-              type="button"
-              onClick={close}
-              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold text-[var(--fg-secondary)] transition hover:bg-white hover:text-[var(--fg)]"
-            >
-              <X className="h-3.5 w-3.5" />
-              Close
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-9 flex-1 items-center justify-center rounded-lg bg-[var(--brand)] text-[12px] font-semibold text-white transition hover:bg-[var(--brand-deep)]"
-              onClick={() => {
-                close();
-                navigate('/alerts?tab=notifications');
-              }}
-            >
-              View all
-            </button>
+            {/* Footer — single primary action; X already closes */}
+            <div className="shrink-0 border-t border-[var(--border)] bg-[var(--bg-subtle)] p-2.5">
+              <button
+                type="button"
+                className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-[var(--brand)] text-[12px] font-semibold text-white transition hover:bg-[var(--brand-deep)]"
+                onClick={() => {
+                  close();
+                  navigate('/alerts?tab=notifications');
+                }}
+              >
+                View all notifications
+              </button>
+            </div>
           </div>
-        </div>
+        </>
       ) : null}
     </div>
   );
