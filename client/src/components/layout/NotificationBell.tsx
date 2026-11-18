@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Video, CheckSquare, MessageSquare, Wallet, Info, Plane } from 'lucide-react';
+import {
+  Bell,
+  Video,
+  CheckSquare,
+  MessageSquare,
+  Wallet,
+  Info,
+  Plane,
+  X,
+  CheckCheck,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
@@ -41,14 +51,14 @@ function noteTone(type?: string) {
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['notifications'],
     queryFn: async () =>
-      (await api.get('/alerts/notifications', { params: { limit: 20 } })).data.data as {
+      (await api.get('/alerts/notifications', { params: { limit: 12 } })).data.data as {
         items: Note[];
         unread: number;
       },
@@ -64,6 +74,9 @@ export function NotificationBell() {
     },
   });
 
+  const close = () => setOpen(false);
+  const toggle = () => setOpen((v) => !v);
+
   useEffect(() => {
     const socket = connectSocket();
     const onNote = (payload: {
@@ -78,13 +91,12 @@ export function NotificationBell() {
       const isMeeting = (payload.type || '').toLowerCase().includes('meeting');
       toast.message(payload.title, {
         description: payload.message,
-        action:
-          payload.link
-            ? {
-                label: isMeeting ? 'Join' : 'Open',
-                onClick: () => navigate(payload.link!),
-              }
-            : undefined,
+        action: payload.link
+          ? {
+              label: isMeeting ? 'Join' : 'Open',
+              onClick: () => navigate(payload.link!),
+            }
+          : undefined,
       });
     };
     socket.on('notification', onNote);
@@ -94,120 +106,180 @@ export function NotificationBell() {
   }, [qc, navigate]);
 
   useEffect(() => {
-    function onDoc(e: MouseEvent) {
-      if (!panelRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    if (!open) return;
+    const onPointer = (e: MouseEvent | TouchEvent) => {
+      const el = rootRef.current;
+      if (!el) return;
+      if (!el.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    // delay so the opening click doesn't immediately close
+    const t = window.setTimeout(() => {
+      document.addEventListener('mousedown', onPointer);
+      document.addEventListener('touchstart', onPointer);
+    }, 0);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('touchstart', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [open]);
 
-  const items = data?.items || [];
+  const items = (data?.items || []).slice(0, 8);
   const unread = data?.unread || 0;
 
   return (
-    <div className="relative" ref={panelRef}>
+    <div className="relative" ref={rootRef}>
       <Button
         variant="ghost"
         size="icon"
         className="relative"
         aria-label="Notifications"
-        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={toggle}
       >
         <Bell className="h-4 w-4" />
-        {unread ? (
-          <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--orange)] px-1 text-[10px] font-bold text-white shadow-xs">
+        {unread > 0 ? (
+          <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--orange)] px-1 text-[10px] font-bold text-white">
             {unread > 9 ? '9+' : unread}
           </span>
         ) : null}
       </Button>
 
       {open ? (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-slate-900/20 sm:hidden backdrop-blur-2xs"
-            onClick={() => setOpen(false)}
-          />
-          <div className="fixed inset-x-2 top-16 z-50 mt-1 flex max-h-[80dvh] flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[380px] sm:max-h-[460px]">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-3">
-              <div>
-                <div className="text-sm font-bold text-slate-900">Notifications</div>
-                <div className="text-xs text-slate-500">{unread} unread notifications</div>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Recent notifications"
+          className="absolute right-0 top-[calc(100%+8px)] z-[60] flex w-[min(92vw,360px)] max-h-[min(70vh,420px)] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-lg)]"
+        >
+          {/* Header with X */}
+          <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-[var(--fg)]">Notifications</h2>
+                {unread > 0 ? (
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-[var(--brand)] px-1.5 text-[10px] font-semibold text-white">
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                ) : null}
               </div>
-              {unread ? (
-                <button
-                  type="button"
-                  className="rounded-lg px-2 py-1 text-xs font-semibold text-teal-700 transition hover:bg-teal-50 hover:underline"
-                  onClick={() => markRead.mutate({ all: true })}
-                >
-                  Mark all read
-                </button>
-              ) : null}
+              <p className="text-[11px] text-[var(--fg-muted)]">
+                {unread > 0 ? `${unread} unread` : 'Recent updates'}
+              </p>
             </div>
-            <div className="flex-1 divide-y divide-slate-100 overflow-y-auto">
-              {items.map((n) => {
-                const Icon = noteIcon(n.type);
-                const meeting = (n.type || '').toLowerCase().includes('meeting');
-                return (
-                  <button
-                    key={n._id}
-                    type="button"
-                    className={cn(
-                      'flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 active:bg-slate-100',
-                      !n.readAt && (meeting ? 'bg-teal-50/50' : 'bg-teal-50/30')
-                    )}
-                    onClick={async () => {
-                      if (!n.readAt) await markRead.mutateAsync({ ids: [n._id] });
-                      setOpen(false);
-                      if (n.link) navigate(n.link);
-                      else navigate('/alerts?tab=notifications');
-                    }}
-                  >
-                    <span
-                      className={cn(
-                        'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl',
-                        noteTone(n.type)
-                      )}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-xs font-bold text-slate-900">{n.title}</span>
-                        {!n.readAt ? (
-                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-teal-600" />
-                        ) : null}
-                      </div>
-                      <div className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-slate-600">
-                        {n.message}
-                      </div>
-                      <div className="mt-1 flex items-center gap-2 text-[10px] font-medium text-slate-400">
-                        <span>{formatDateTime(n.createdAt)}</span>
-                        {meeting ? (
-                          <span className="rounded bg-teal-100 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-teal-700">
-                            Meeting
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-              {!items.length ? (
-                <div className="px-4 py-10 text-center text-xs text-slate-500">No notifications yet</div>
-              ) : null}
-            </div>
+
+            {unread > 0 ? (
+              <button
+                type="button"
+                className="rounded-md px-2 py-1.5 text-[11px] font-semibold text-[var(--brand)] hover:bg-[var(--brand-soft)]"
+                onClick={() => markRead.mutate({ all: true })}
+                disabled={markRead.isPending}
+              >
+                Mark all read
+              </button>
+            ) : null}
+
             <button
               type="button"
-              className="w-full border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 text-center text-xs font-bold text-teal-700 transition hover:bg-teal-50 hover:text-teal-800"
+              onClick={close}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--fg-muted)] transition hover:bg-[var(--bg-subtle)] hover:text-[var(--fg)]"
+              aria-label="Close"
+              title="Close"
+            >
+              <X className="h-4 w-4" strokeWidth={2.5} />
+            </button>
+          </div>
+
+          {/* Recent list */}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {isLoading ? (
+              <div className="px-4 py-10 text-center text-xs text-[var(--fg-muted)]">Loading…</div>
+            ) : items.length === 0 ? (
+              <div className="px-4 py-10 text-center">
+                <Bell className="mx-auto h-5 w-5 text-slate-300" />
+                <p className="mt-2 text-sm font-medium text-[var(--fg)]">No notifications</p>
+                <p className="mt-0.5 text-xs text-[var(--fg-muted)]">You’re all caught up.</p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-[var(--divider)]">
+                {items.map((n) => {
+                  const Icon = noteIcon(n.type);
+                  const unreadItem = !n.readAt;
+                  return (
+                    <li key={n._id}>
+                      <button
+                        type="button"
+                        className={cn(
+                          'flex w-full items-start gap-2.5 px-3 py-3 text-left transition hover:bg-[var(--bg-subtle)]',
+                          unreadItem && 'bg-[var(--brand-soft)]/60'
+                        )}
+                        onClick={async () => {
+                          if (unreadItem) await markRead.mutateAsync({ ids: [n._id] });
+                          close();
+                          if (n.link) navigate(n.link);
+                          else navigate('/alerts?tab=notifications');
+                        }}
+                      >
+                        <span
+                          className={cn(
+                            'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
+                            noteTone(n.type)
+                          )}
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate text-[13px] font-semibold text-[var(--fg)]">
+                              {n.title}
+                            </span>
+                            {unreadItem ? (
+                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand)]" />
+                            ) : null}
+                          </div>
+                          <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-[var(--fg-secondary)]">
+                            {n.message}
+                          </p>
+                          <p className="mt-1 text-[10px] text-[var(--fg-muted)]">
+                            {formatDateTime(n.createdAt)}
+                          </p>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex shrink-0 items-center gap-2 border-t border-[var(--border)] bg-[var(--bg-subtle)] px-2.5 py-2">
+            <button
+              type="button"
+              onClick={close}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold text-[var(--fg-secondary)] transition hover:bg-white hover:text-[var(--fg)]"
+            >
+              <X className="h-3.5 w-3.5" />
+              Close
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-9 flex-1 items-center justify-center rounded-lg bg-[var(--brand)] text-[12px] font-semibold text-white transition hover:bg-[var(--brand-deep)]"
               onClick={() => {
-                setOpen(false);
+                close();
                 navigate('/alerts?tab=notifications');
               }}
             >
-              View all notifications →
+              View all
             </button>
           </div>
-        </>
+        </div>
       ) : null}
     </div>
   );

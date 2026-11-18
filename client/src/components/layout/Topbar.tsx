@@ -49,8 +49,8 @@ export function Topbar({ title, breadcrumb }: { title?: string; breadcrumb?: str
   const isDark = theme === 'dark';
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-[var(--border)] bg-[var(--bg-header)] px-4 backdrop-blur-md md:px-6">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-header)] px-3 md:h-16 md:px-6">
+      <div className="flex min-w-0 items-center gap-2.5">
         <Button
           variant="ghost"
           size="icon"
@@ -60,33 +60,31 @@ export function Topbar({ title, breadcrumb }: { title?: string; breadcrumb?: str
         >
           <Menu className="h-5 w-5" />
         </Button>
-        <div className="flex items-center gap-2 text-[13px] font-medium text-[var(--fg-muted)]">
-          <span className="hover:text-[var(--fg)] transition cursor-pointer">
-            {breadcrumb || 'Workspace'}
-          </span>
-          <span className="text-[var(--border)]">/</span>
-          <span className="font-semibold text-[var(--fg)]">{title || 'Chat'}</span>
+        <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-[var(--fg-muted)]">
+          <span className="hidden truncate sm:inline">{breadcrumb || 'Workspace'}</span>
+          <span className="hidden text-[var(--border)] sm:inline">/</span>
+          <span className="truncate font-semibold text-[var(--fg)]">{title || 'Workspace'}</span>
         </div>
       </div>
 
-      <div className="relative mx-auto hidden w-full max-w-sm md:block">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--fg-muted)]" />
+      <div className="relative mx-4 hidden w-full max-w-md md:block">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--fg-muted)]" />
         <input
           type="text"
           onClick={() => setCommandOpen(true)}
           readOnly
-          placeholder="Search anything..."
-          className="h-9 w-full rounded-full border border-[var(--border)] bg-[var(--bg-subtle)] pl-9 pr-4 text-xs text-[var(--fg)] placeholder:text-[var(--fg-muted)] shadow-2xs transition hover:bg-[var(--bg-elevated)] hover:border-[var(--border)] focus:border-[var(--teal)] focus:bg-[var(--bg-elevated)] focus:outline-none cursor-pointer"
+          placeholder="Search…"
+          className="h-9 w-full cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] pl-9 pr-3 text-xs text-[var(--fg)] placeholder:text-[var(--fg-muted)] transition hover:border-[var(--fg-muted)]/40 hover:bg-[var(--bg-elevated)] focus:border-[var(--brand)] focus:bg-[var(--bg-elevated)] focus:outline-none"
         />
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex items-center gap-1 sm:gap-1.5">
         <NotificationBell />
 
         <button
           type="button"
           onClick={() => setTheme(isDark ? 'light' : 'dark')}
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-[var(--fg-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--fg)] transition"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--fg-secondary)] transition hover:bg-[var(--bg-subtle)] hover:text-[var(--fg)]"
           title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
         >
@@ -99,7 +97,7 @@ export function Topbar({ title, breadcrumb }: { title?: string; breadcrumb?: str
             onClick={() => setMenuOpen((o) => !o)}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            className="flex items-center gap-2.5 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] py-1 pl-1 pr-3 shadow-xs transition hover:bg-[var(--bg-subtle)]"
+            className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] py-1 pl-1 pr-2 transition hover:bg-[var(--bg-subtle)] sm:pr-2.5"
           >
             <UserAvatar
               name={user?.name || 'User'}
@@ -107,7 +105,7 @@ export function Topbar({ title, breadcrumb }: { title?: string; breadcrumb?: str
               className="h-7 w-7 rounded-full text-[10px]"
             />
             <div className="hidden min-w-0 text-left sm:block">
-              <div className="truncate text-xs font-bold leading-tight text-[var(--fg)]">
+              <div className="truncate text-xs font-semibold leading-tight text-[var(--fg)]">
                 {user?.name || 'Account'}
               </div>
               <div className="text-[10px] font-medium leading-tight capitalize text-[var(--fg-muted)]">
@@ -115,14 +113,14 @@ export function Topbar({ title, breadcrumb }: { title?: string; breadcrumb?: str
               </div>
             </div>
             <ChevronDown
-              className={`h-3.5 w-3.5 text-[var(--fg-muted)] transition ${menuOpen ? 'rotate-180' : ''}`}
+              className={`hidden h-3.5 w-3.5 text-[var(--fg-muted)] transition sm:block ${menuOpen ? 'rotate-180' : ''}`}
             />
           </button>
 
           {menuOpen ? (
             <div
               role="menu"
-              className="absolute right-0 mt-2 w-56 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] py-1.5 shadow-lg z-50"
+              className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-lg"
             >
               <div className="border-b border-[var(--border)] px-3.5 py-2.5">
                 <div className="truncate text-sm font-semibold text-[var(--fg)]">{user?.name}</div>
@@ -142,7 +140,7 @@ export function Topbar({ title, breadcrumb }: { title?: string; breadcrumb?: str
                 role="menuitem"
                 onClick={() => void logout()}
                 disabled={loggingOut}
-                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-rose-500 hover:bg-rose-500/10 disabled:opacity-60"
+                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60"
               >
                 <LogOut className="h-4 w-4" />
                 {loggingOut ? 'Signing out…' : 'Log out'}

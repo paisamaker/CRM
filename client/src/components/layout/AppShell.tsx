@@ -67,26 +67,37 @@ export function AppShell() {
 
   const isChatRoute = location.pathname.startsWith('/chat');
   const isMeetingRoom = location.pathname.startsWith('/meetings/room/');
+  const chatThreadOpen = isChatRoute && new URLSearchParams(location.search).has('c');
 
   if (isMeetingRoom) {
     return (
-      <div className="min-h-screen bg-[var(--bg)]">
+      <div className="min-h-[100dvh] bg-[#202124]">
         <Outlet />
         <CommandPalette />
       </div>
     );
   }
 
+  const contentPad = collapsed ? 'md:pl-[72px]' : 'md:pl-[235px]';
+
   return (
-    <div className="min-h-screen bg-[var(--bg)]">
-      <Sidebar />
-      <div className={cn('transition-[padding] duration-200', collapsed ? 'md:pl-[72px]' : 'md:pl-[235px]')}>
-        <Topbar title={title} breadcrumb="Workspace" />
+    <div className="min-h-[100dvh] bg-[var(--bg)]">
+      {/* WhatsApp-style: hide CRM chrome on mobile while a chat thread is open */}
+      <div className={cn(chatThreadOpen && 'max-md:hidden')}>
+        <Sidebar />
+      </div>
+      <div className={cn('transition-[padding] duration-200', contentPad)}>
+        <div className={cn(chatThreadOpen && 'max-md:hidden')}>
+          <Topbar title={title} breadcrumb="Workspace" />
+        </div>
         <main
           className={cn(
             isChatRoute
-              ? 'h-[calc(100vh-4rem)] w-full overflow-hidden p-0'
-              : 'mx-auto w-full max-w-[1440px] px-3 py-4 sm:px-4 sm:py-6 md:px-6 lg:px-8'
+              ? cn(
+                  'w-full overflow-hidden p-0',
+                  chatThreadOpen ? 'h-[100dvh] md:h-[calc(100dvh-4rem)]' : 'h-[calc(100dvh-4rem)]'
+                )
+              : 'mx-auto w-full max-w-[1440px] px-3 py-3 sm:px-4 sm:py-5 md:px-6 md:py-6 lg:px-8'
           )}
         >
           <Outlet />

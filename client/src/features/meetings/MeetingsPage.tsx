@@ -140,26 +140,24 @@ export function MeetingsPage() {
   }, [meetingsError]);
 
   return (
-    <div className="meetings-page space-y-5 pb-12">
+    <div className="meetings-page space-y-4 pb-10 sm:space-y-5 sm:pb-12">
       <header className="overflow-hidden rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-sm)]">
-        <div className="bg-[linear-gradient(120deg,#ecfdf5_0%,transparent_40%,#eff6ff_100%)] px-5 py-5 sm:px-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="px-4 py-4 sm:px-6 sm:py-5">
+          <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="text-[11px] font-medium text-[var(--fg-secondary)]">Collaboration</div>
-              <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-[var(--fg)]">
-                <Video className="h-6 w-6 text-teal-700" />
+              <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-[var(--fg)] sm:text-2xl">
+                <Video className="h-5 w-5 text-[var(--brand)] sm:h-6 sm:w-6" />
                 Meetings
               </h1>
-              <p className="mt-1 max-w-xl text-sm text-[var(--fg-secondary)]">
-                See who is online, create a meeting, invite teammates, and join a Meet-style video
-                call with mute, camera, screen share, chat, reactions, and hand raise.
+              <p className="mt-1 max-w-xl text-xs text-[var(--fg-secondary)] sm:text-sm">
+                See who’s online, start or join a call, and invite teammates.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-1.5 text-xs"
+                className="h-9 flex-1 gap-1.5 text-xs sm:h-8 sm:flex-none"
                 onClick={() => {
                   void refetchPeople();
                   void refetchMeetings();
@@ -169,7 +167,7 @@ export function MeetingsPage() {
               </Button>
               <Button
                 size="sm"
-                className="gap-1.5 text-xs"
+                className="h-9 flex-1 gap-1.5 text-xs sm:h-8 sm:flex-none"
                 onClick={() => {
                   setInviteTarget([]);
                   setCreateOpen(true);
@@ -182,8 +180,8 @@ export function MeetingsPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-        <section className="xl:col-span-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-sm)]">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 xl:grid-cols-12">
+        <section className="order-2 overflow-hidden rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-sm)] xl:order-1 xl:col-span-4">
           <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold text-[var(--fg)]">
@@ -199,14 +197,14 @@ export function MeetingsPage() {
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--fg-muted)]" />
               <Input
-                className="h-9 pl-8 text-xs"
+                className="h-10 pl-8 text-sm sm:h-9 sm:text-xs"
                 placeholder="Search employees…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
           </div>
-          <div className="max-h-[60vh] space-y-0.5 overflow-y-auto p-2">
+          <div className="max-h-[42vh] space-y-0.5 overflow-y-auto overscroll-contain p-2 sm:max-h-[60vh]">
             {loadingPeople ? (
               <div className="py-10 text-center text-xs text-[var(--fg-muted)]">Loading team…</div>
             ) : onlineSorted.length === 0 ? (
@@ -261,19 +259,21 @@ export function MeetingsPage() {
           </div>
         </section>
 
-        <section className="xl:col-span-8 space-y-4">
-          <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[var(--shadow-sm)] sm:flex-row sm:items-end">
+        <section className="order-1 space-y-4 xl:order-2 xl:col-span-8">
+          <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-sm)] sm:flex-row sm:items-end sm:p-4">
             <div className="flex-1">
               <div className="text-xs font-semibold text-[var(--fg)]">Join with a code</div>
               <Input
-                className="mt-1"
+                className="mt-1 h-11 font-mono text-base tracking-wider sm:h-10 sm:text-sm"
                 placeholder="e.g. ABC234"
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                autoCapitalize="characters"
+                inputMode="text"
               />
             </div>
             <Button
-              className="gap-1.5"
+              className="h-11 gap-1.5 sm:h-10"
               disabled={joinCode.trim().length < 4}
               onClick={() => navigate(`/meetings/room/${joinCode.trim()}`)}
             >

@@ -231,34 +231,43 @@ export function MeetingRoomPage() {
   return (
     <div className="meet-room">
       <header className="meet-room-header">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-white">{meeting.title}</div>
-          <div className="text-[11px] text-white/70">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-medium text-white sm:text-sm sm:font-semibold">
+            {meeting.title}
+          </div>
+          <div className="truncate text-[11px] text-white/65">
             {meeting.code} · {tiles.length} in call
             {rtc.joined ? '' : ' · Connecting…'}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="meet-header-actions flex shrink-0 items-center gap-1.5 sm:gap-2">
           <Button
             size="sm"
             variant="outline"
-            className="h-8 border-white/20 bg-white/10 text-xs text-white hover:bg-white/20"
+            className="h-9 w-9 border-white/15 bg-white/10 p-0 text-white hover:bg-white/20 sm:h-8 sm:w-auto sm:gap-1.5 sm:px-2.5"
             onClick={async () => {
-              await navigator.clipboard.writeText(`${window.location.origin}/meetings/room/${meeting.code}`);
+              await navigator.clipboard.writeText(
+                `${window.location.origin}/meetings/room/${meeting.code}`
+              );
               toast.success('Invite link copied');
             }}
+            title="Copy invite link"
           >
-            <Copy className="h-3.5 w-3.5" /> Copy link
+            <Copy className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+            <span className="meet-header-label hidden sm:inline">Copy link</span>
           </Button>
           {isHost ? (
             <Button
               size="sm"
               variant="outline"
-              className="h-8 border-rose-300/40 bg-rose-500/20 text-xs text-rose-100 hover:bg-rose-500/30"
+              className="h-9 border-rose-300/30 bg-rose-500/25 px-2.5 text-xs text-rose-50 hover:bg-rose-500/40 sm:h-8"
               disabled={endMeeting.isPending}
               onClick={() => endMeeting.mutate()}
+              title="End meeting for everyone"
             >
-              <Shield className="h-3.5 w-3.5" /> End for all
+              <Shield className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+              <span className="meet-header-label ml-1 hidden sm:inline">End for all</span>
+              <span className="ml-1 sm:hidden">End</span>
             </Button>
           ) : null}
         </div>

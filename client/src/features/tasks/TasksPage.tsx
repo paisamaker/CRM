@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -20,10 +20,12 @@ import {
   MoreVertical,
   Pencil,
   Trash2,
+  ArrowRight,
+  CircleDot,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage, getAuthenticatedFileUrl, isImageFile, isPdfFile } from '@/lib/api';
-import { PageHeader, Card, EmptyState, TableShell } from '@/components/ui/Card';
+import { Card, EmptyState, TableShell } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Badge, statusTone } from '@/components/ui/Badge';
@@ -89,6 +91,7 @@ export function TasksPage() {
   const [cardPreviewFile, setCardPreviewFile] = useState<PreviewFile | null>(null);
   const [menuTaskId, setMenuTaskId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BoardTask | null>(null);
+  const [mobileColumn, setMobileColumn] = useState<string>('todo');
   const [form, setForm] = useState(emptyForm);
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
@@ -223,9 +226,31 @@ export function TasksPage() {
     qc.invalidateQueries({ queryKey: ['tasks-board'] });
   }
 
+  function moveTask(task: BoardTask, status: string) {
+    if (task.status === status) return;
+    if (status === 'completed' && role !== 'ceo') {
+      toast.error('Only CEO can mark parent tasks Done');
+      return;
+    }
+    setMenuTaskId(null);
+    updateStatus.mutate(
+      { id: task._id, status },
+      {
+        onSuccess: () => {
+          toast.success(`Moved to ${columns.find((c) => c.id === status)?.label || status}`);
+          // On mobile single-column view, follow the card
+          if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1279px)').matches) {
+            if (mobileColumn !== 'all') setMobileColumn(status);
+          }
+        },
+      }
+    );
+  }
+
   function TaskActionsMenu({ task }: { task: BoardTask }) {
     if (!canWrite && !canDelete) return null;
     const open = menuTaskId === task._id;
+    const moveTargets = columns.filter((c) => c.id !== task.status);
     return (
       <div className="relative" data-task-menu>
         <button
@@ -244,31 +269,59 @@ export function TasksPage() {
         </button>
         {open ? (
           <div
-            className="absolute right-0 top-8 z-20 min-w-[140px] overflow-hidden rounded-xl border border-[var(--border)] bg-white py-1 shadow-lg"
+            className="absolute right-0 top-8 z-30 w-[188px] overflow-hidden rounded-lg border border-[var(--border)] bg-white py-1 shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             {canWrite ? (
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                onClick={() => openIssue(task._id)}
-              >
-                <Pencil className="h-3.5 w-3.5 text-slate-500" />
-                Edit
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  onClick={() => openIssue(task._id)}
+                >
+                  <Pencil className="h-3.5 w-3.5 text-slate-500" />
+                  Edit
+                </button>
+                <div className="my-1 border-t border-slate-100" />
+                <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Move to
+                </div>
+                {moveTargets.map((c) => {
+                  const blocked = c.id === 'completed' && role !== 'ceo';
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      disabled={blocked || updateStatus.isPending}
+                      className={cn(
+                        'flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45',
+                        c.id === 'completed' ? 'text-teal-700' : 'text-slate-700'
+                      )}
+                      title={blocked ? 'Only CEO can mark Done' : `Move to ${c.label}`}
+                      onClick={() => moveTask(task, c.id)}
+                    >
+                      <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </>
             ) : null}
             {canDelete ? (
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50"
-                onClick={() => {
-                  setMenuTaskId(null);
-                  setDeleteTarget(task);
-                }}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Delete
-              </button>
+              <>
+                <div className="my-1 border-t border-slate-100" />
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                  onClick={() => {
+                    setMenuTaskId(null);
+                    setDeleteTarget(task);
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </button>
+              </>
             ) : null}
           </div>
         ) : null}
@@ -284,144 +337,215 @@ export function TasksPage() {
       ? overId
       : flat.find((t) => t._id === overId)?.status;
     if (!status) return;
-    if (status === 'completed' && role !== 'ceo') {
-      toast.error('Only CEO can mark parent tasks Done');
-      return;
+    const task = flat.find((t) => t._id === taskId);
+    if (task) moveTask(task, status);
+    else {
+      if (status === 'completed' && role !== 'ceo') {
+        toast.error('Only CEO can mark parent tasks Done');
+        return;
+      }
+      updateStatus.mutate({ id: taskId, status });
     }
-    updateStatus.mutate({ id: taskId, status });
   }
 
-  const [mobileColumn, setMobileColumn] = useState<string>('all');
   const selectedProjectName = projects?.find((p: { _id: string }) => p._id === projectFilter)?.name;
+  const totalTasks = useMemo(
+    () => (data ? Object.values(data).reduce((acc, col) => acc + (col?.length || 0), 0) : 0),
+    [data]
+  );
+
+  const mobileColumnInitKey = useRef<string | null>(null);
+  // Prefer the first column with tasks when opening a project on mobile.
+  useEffect(() => {
+    if (!data) return;
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches) return;
+    const key = projectFilter || '__all__';
+    if (mobileColumnInitKey.current === key) return;
+    mobileColumnInitKey.current = key;
+    const firstWithItems = columns.find((c) => (data[c.id] || []).length > 0);
+    setMobileColumn(firstWithItems?.id || 'todo');
+  }, [data, projectFilter]);
 
   return (
-    <div>
-      <PageHeader
-        title="Tasks & Workflow"
-        description="Jira-style project board with issue details, subtasks, dates, and activity"
-        actions={
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-            <Select
-              value={projectFilter}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v) setParams({ project: v });
-                else setParams({});
-              }}
-              className="w-full sm:w-52"
-            >
-              <option value="">All projects</option>
-              {(projects || []).map((p: { _id: string; name: string }) => (
-                <option key={p._id} value={p._id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-            <div className="flex items-center gap-2 justify-between sm:justify-start">
-              <div className="flex rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-1">
-                <button
-                  type="button"
-                  className={cn(
-                    'rounded-lg px-3 py-1.5 text-xs font-semibold',
-                    view === 'board' ? 'bg-[var(--brand-soft)] text-[var(--brand)] shadow-2xs' : 'text-[var(--fg-secondary)]'
-                  )}
-                  onClick={() => setView('board')}
-                >
-                  Board
-                </button>
-                <button
-                  type="button"
-                  className={cn(
-                    'rounded-lg px-3 py-1.5 text-xs font-semibold',
-                    view === 'table' ? 'bg-[var(--brand-soft)] text-[var(--brand)] shadow-2xs' : 'text-[var(--fg-secondary)]'
-                  )}
-                  onClick={() => setView('table')}
-                >
-                  Table
-                </button>
-              </div>
-              <Button onClick={() => setOpen(true)} className="flex-1 sm:flex-initial justify-center bg-[#0D9488] hover:bg-[#0B7D72] text-white">
-                <Plus className="h-4 w-4" />
-                <span>Create Task</span>
-              </Button>
-            </div>
-          </div>
-        }
-      />
-
-      {selectedProjectName ? (
-        <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50/70 px-4 py-2.5 text-xs font-medium text-teal-900">
-          Project Workspace: <span className="font-bold">{selectedProjectName}</span> — tap any task card to manage workflow details &amp; files.
+    <div className="pb-6">
+      <div className="mb-3 flex flex-col gap-1 sm:mb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-[var(--fg)] sm:text-[1.625rem]">
+            Tasks & Workflow
+          </h1>
+          <p className="mt-0.5 hidden max-w-2xl text-sm text-[var(--fg-secondary)] sm:block">
+            Board, issue details, subtasks, and activity
+          </p>
         </div>
-      ) : null}
+        <p className="text-[12px] text-[var(--fg-muted)] sm:hidden">
+          {totalTasks} task{totalTasks === 1 ? '' : 's'}
+          {selectedProjectName ? ` · ${selectedProjectName}` : ''}
+        </p>
+      </div>
 
-      {isLoading ? <Card className="p-8 text-center text-xs text-slate-500">Loading workflow board…</Card> : null}
+      {/* Compact sticky controls */}
+      <div className="sticky top-14 z-20 -mx-3 mb-3 space-y-2 border-b border-[var(--border)] bg-[var(--bg)]/95 px-3 py-2.5 backdrop-blur-md sm:static sm:mx-0 sm:mb-4 sm:space-y-3 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Select
+            value={projectFilter}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v) setParams({ project: v });
+              else setParams({});
+            }}
+            className="h-10 w-full text-sm sm:h-9 sm:w-56"
+          >
+            <option value="">All projects</option>
+            {(projects || []).map((p: { _id: string; name: string }) => (
+              <option key={p._id} value={p._id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+
+          <div className="flex items-center gap-2">
+            <div className="flex flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-1 sm:flex-none">
+              <button
+                type="button"
+                className={cn(
+                  'flex-1 rounded-lg px-3 py-2 text-xs font-semibold sm:flex-none sm:py-1.5',
+                  view === 'board'
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : 'text-[var(--fg-secondary)]'
+                )}
+                onClick={() => setView('board')}
+              >
+                Board
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  'flex-1 rounded-lg px-3 py-2 text-xs font-semibold sm:flex-none sm:py-1.5',
+                  view === 'table'
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : 'text-[var(--fg-secondary)]'
+                )}
+                onClick={() => setView('table')}
+              >
+                Table
+              </button>
+            </div>
+            <Button
+              onClick={() => setOpen(true)}
+              className="h-10 shrink-0 gap-1.5 px-3 sm:h-9"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="sm:hidden">Create</span>
+              <span className="hidden sm:inline">Create Task</span>
+            </Button>
+          </div>
+        </div>
+
+        {selectedProjectName ? (
+          <div className="flex items-center gap-2 rounded-xl border border-teal-200/80 bg-teal-50/80 px-3 py-2 text-[11px] font-medium text-teal-900 sm:text-xs">
+            <span className="truncate">
+              <span className="font-bold">{selectedProjectName}</span>
+              <span className="text-teal-700/80"> · tap a card to open details</span>
+            </span>
+          </div>
+        ) : null}
+      </div>
+
+      {isLoading ? (
+        <Card className="p-8 text-center text-xs text-slate-500">Loading workflow board…</Card>
+      ) : null}
 
       {view === 'board' && data ? (
         <>
-          {/* Mobile Column Switcher (visible on phone/tablet screens) */}
-          <div className="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden xl:hidden">
+          {/* Mobile status pills */}
+          <div
+            className="mb-3 flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden xl:hidden"
+            role="tablist"
+            aria-label="Board columns"
+          >
+            {columns.map((c) => {
+              const count = (data[c.id] || []).length;
+              const active = mobileColumn === c.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setMobileColumn(c.id)}
+                  className={cn(
+                    'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-semibold transition',
+                    active
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'border border-slate-200 bg-white text-slate-600 active:bg-slate-50'
+                  )}
+                >
+                  {c.label}
+                  <span
+                    className={cn(
+                      'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold',
+                      active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                    )}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
             <button
               type="button"
+              role="tab"
+              aria-selected={mobileColumn === 'all'}
               onClick={() => setMobileColumn('all')}
               className={cn(
-                'rounded-xl px-3 py-1.5 text-xs font-bold whitespace-nowrap transition shadow-2xs',
+                'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-semibold transition',
                 mobileColumn === 'all'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-white border border-slate-200 text-slate-600'
+                  ? 'bg-teal-700 text-white shadow-sm'
+                  : 'border border-slate-200 bg-white text-slate-600'
               )}
             >
-              All Columns ({Object.values(data).reduce((acc, col) => acc + (col?.length || 0), 0)})
-            </button>
-            {columns.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setMobileColumn(c.id)}
+              All
+              <span
                 className={cn(
-                  'flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold whitespace-nowrap transition shadow-2xs',
-                  mobileColumn === c.id
-                    ? 'bg-teal-700 text-white'
-                    : 'bg-white border border-slate-200 text-slate-600'
+                  'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold',
+                  mobileColumn === 'all' ? 'bg-white/20' : 'bg-slate-100 text-slate-600'
                 )}
               >
-                <span>{c.label}</span>
-                <span className={cn(
-                  'rounded-full px-1.5 py-0.2 text-[10px]',
-                  mobileColumn === c.id ? 'bg-teal-800 text-teal-100' : 'bg-slate-100 text-slate-600'
-                )}>
-                  {(data[c.id] || []).length}
-                </span>
-              </button>
-            ))}
+                {totalTasks}
+              </span>
+            </button>
           </div>
 
           <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={onDragEnd}>
-            <div className={cn(
-              mobileColumn === 'all'
-                ? 'flex overflow-x-auto snap-x snap-mandatory pb-4 gap-3 xl:grid xl:grid-cols-4 xl:overflow-visible xl:pb-0 [scrollbar-width:thin]'
-                : 'grid gap-3 xl:grid-cols-4'
-            )}>
+            <div
+              className={cn(
+                mobileColumn === 'all'
+                  ? 'flex gap-3 overflow-x-auto snap-x snap-mandatory pb-3 [scrollbar-width:thin] xl:grid xl:grid-cols-4 xl:overflow-visible xl:pb-0'
+                  : 'grid gap-3 xl:grid-cols-4'
+              )}
+            >
               {columns
                 .filter((col) => mobileColumn === 'all' || mobileColumn === col.id)
                 .map((col) => {
-                const borderAccent =
+                const accentBar =
                   col.id === 'todo'
-                    ? 'border-t-3 border-t-[var(--purple)]'
+                    ? 'bg-slate-400'
                     : col.id === 'in_progress'
-                      ? 'border-t-3 border-t-blue-500'
+                      ? 'bg-sky-600'
                       : col.id === 'review'
-                        ? 'border-t-3 border-t-[var(--orange)]'
-                        : 'border-t-3 border-t-[var(--teal)]';
+                        ? 'bg-amber-600'
+                        : 'bg-[var(--teal)]';
 
                 const tone =
                   col.id === 'todo'
-                    ? 'purple'
+                    ? 'default'
                     : col.id === 'in_progress'
                       ? 'info'
                       : col.id === 'review'
                         ? 'orange'
                         : 'teal';
+
+                const colTasks = data[col.id] || [];
 
                 return (
                   <div
@@ -438,18 +562,34 @@ export function TasksPage() {
                       updateStatus.mutate({ id, status: col.id });
                     }}
                     className={cn(
-                      'rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-xs',
-                      borderAccent,
-                      mobileColumn === 'all' ? 'w-[84vw] sm:w-[320px] xl:w-auto shrink-0 snap-center xl:shrink xl:snap-none' : 'w-full'
+                      'overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle)] shadow-xs',
+                      mobileColumn === 'all'
+                        ? 'w-[min(86vw,320px)] shrink-0 snap-center xl:w-auto xl:shrink xl:snap-none'
+                        : 'w-full'
                     )}
                   >
-                    <div className="mb-2.5 flex items-center justify-between px-1">
-                      <h3 className="text-xs font-bold uppercase tracking-wide text-[var(--fg)]">
+                    <div className={cn('h-1 w-full', accentBar)} />
+                    <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-3">
+                      <h3 className="text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--fg)]">
                         {col.label}
                       </h3>
-                      <Badge tone={tone} className="text-[10px] !px-1.5 !py-0">{(data[col.id] || []).length}</Badge>
+                      <Badge tone={tone} className="text-[10px] !px-1.5 !py-0">
+                        {colTasks.length}
+                      </Badge>
                     </div>
-                    <div className="min-h-28 space-y-2">
+                    <div className="min-h-28 space-y-2 px-2.5 pb-3">
+                      {!colTasks.length ? (
+                        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white/70 px-3 py-10 text-center">
+                          <p className="text-xs font-medium text-slate-500">No tasks here</p>
+                          <button
+                            type="button"
+                            className="mt-2 text-[11px] font-semibold text-teal-700"
+                            onClick={() => setOpen(true)}
+                          >
+                            + Add task
+                          </button>
+                        </div>
+                      ) : null}
                     {(data[col.id] || []).map((task) => {
                       const overdue = isOverdue(task.dueDate, task.status);
                       const subs = task.subtasks || { total: 0, done: 0 };
@@ -465,10 +605,12 @@ export function TasksPage() {
                           draggable
                           onDragStart={(e) => e.dataTransfer.setData('text/plain', task._id)}
                           onClick={() => openIssue(task._id)}
-                          className="group/card relative cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-white p-3 shadow-sm transition hover:border-[var(--brand)]/40 hover:shadow-md"
+                          className="group/card relative cursor-pointer rounded-xl border border-[var(--border)] bg-white p-3 shadow-sm transition active:scale-[0.99] hover:border-teal-300/60 hover:shadow-md"
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1 text-sm font-semibold text-[var(--fg)]">{task.title}</div>
+                            <div className="min-w-0 flex-1 text-[13px] font-semibold leading-snug text-[var(--fg)] sm:text-sm">
+                              {task.title}
+                            </div>
                             <div
                               className={cn(
                                 'shrink-0 transition',
@@ -567,6 +709,41 @@ export function TasksPage() {
                           <div className="mt-2 text-[11px] text-[var(--fg-secondary)]">
                             {task.assignees?.map((a) => a.name).join(', ') || 'Unassigned'}
                           </div>
+
+                          {canWrite ? (
+                            <div
+                              className="mt-2.5 flex flex-wrap gap-1.5 border-t border-slate-100 pt-2.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {columns
+                                .filter((c) => c.id !== task.status)
+                                .map((c) => {
+                                  const blocked = c.id === 'completed' && role !== 'ceo';
+                                  return (
+                                    <button
+                                      key={c.id}
+                                      type="button"
+                                      disabled={blocked || updateStatus.isPending}
+                                      title={blocked ? 'Only CEO can mark Done' : `Move to ${c.label}`}
+                                      onClick={() => moveTask(task, c.id)}
+                                      className={cn(
+                                        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40',
+                                        c.id === 'review'
+                                          ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                                          : c.id === 'completed'
+                                            ? 'border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100'
+                                            : c.id === 'in_progress'
+                                              ? 'border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100'
+                                              : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                                      )}
+                                    >
+                                      <CircleDot className="h-2.5 w-2.5" />
+                                      {c.label}
+                                    </button>
+                                  );
+                                })}
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })}

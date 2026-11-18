@@ -23,7 +23,9 @@ export function ChatPage() {
   const [params, setParams] = useSearchParams();
   const activeId = params.get('c') || '';
 
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : false
+  );
   const [groupModalOpen, setGroupModalOpen] = useState(false);
   const [newChatModalOpen, setNewChatModalOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -52,11 +54,11 @@ export function ChatPage() {
       ).data.data as Conversation[],
   });
 
-  // Automatically select first conversation if none selected
+  // Desktop only: auto-select first conversation. Mobile stays list-first (WhatsApp-style).
   useEffect(() => {
-    if (!activeId && conversations.length > 0) {
-      setParams({ c: conversations[0]._id }, { replace: true });
-    }
+    if (activeId || !conversations.length) return;
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) return;
+    setParams({ c: conversations[0]._id }, { replace: true });
   }, [activeId, conversations, setParams]);
 
   const { data: colleagues = [] } = useQuery({
@@ -424,7 +426,7 @@ export function ChatPage() {
         </div>
 
         <div
-          className={`${!activeId ? 'hidden md:flex' : 'flex'} relative h-full min-w-0 flex-1 flex-col bg-white`}
+          className={`${!activeId ? 'hidden md:flex' : 'flex'} relative h-full min-w-0 flex-1 flex-col bg-[#efeae2] md:bg-white`}
         >
           {activeConversation ? (
             <>

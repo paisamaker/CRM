@@ -188,12 +188,11 @@ export function LeavesPage() {
   return (
     <div className="space-y-5 pb-10">
       <header className="overflow-hidden rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-sm)]">
-        <div className="bg-[linear-gradient(120deg,#eff6ff_0%,transparent_45%,#ecfdf5_100%)] px-5 py-5 sm:px-6">
+        <div className="px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="text-[11px] font-medium text-[var(--fg-secondary)]">Workforce</div>
-              <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-[var(--fg)]">
-                <Plane className="h-6 w-6 text-sky-700" />
+              <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-[var(--fg)] sm:text-2xl">
+                <Plane className="h-5 w-5 text-[var(--brand)] sm:h-6 sm:w-6" />
                 Leave Applications
               </h1>
               <p className="mt-1 max-w-xl text-sm text-[var(--fg-secondary)]">
@@ -225,17 +224,22 @@ export function LeavesPage() {
         </div>
       </header>
 
-      <div className="flex flex-wrap gap-2">
+      <div
+        className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        role="tablist"
+      >
         {TABS.map((t) => (
           <button
             key={t}
             type="button"
+            role="tab"
+            aria-selected={tab === t}
             onClick={() => setTab(t)}
             className={cn(
-              'rounded-xl px-3 py-2 text-sm capitalize',
+              'shrink-0 rounded-full px-4 py-2 text-sm capitalize transition sm:rounded-xl',
               tab === t
-                ? 'bg-[var(--brand)] text-white'
-                : 'border border-[var(--border)] bg-[var(--bg-elevated)]'
+                ? 'bg-[var(--brand)] font-semibold text-white shadow-sm'
+                : 'border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--fg-secondary)]'
             )}
           >
             {t}

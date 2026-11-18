@@ -9,7 +9,21 @@ import { Badge, statusTone } from '@/components/ui/Badge';
 import { Input, Label, Select } from '@/components/ui/Input';
 import { useAuthStore } from '@/stores/auth';
 import { formatDate, cn } from '@/lib/utils';
-import { Users, User, Eye, EyeOff, KeyRound, Link2, RefreshCw, Check } from 'lucide-react';
+import {
+  Users,
+  User,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Link2,
+  RefreshCw,
+  Check,
+  Plus,
+  ChevronRight,
+  Search,
+  Phone,
+  IdCard,
+} from 'lucide-react';
 import { WorkingTeamsList } from '@/features/teams/components/WorkingTeamsList';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { EmployeeProfileDrawer } from '@/features/attendance/components/EmployeeProfileDrawer';
@@ -104,6 +118,7 @@ export function UsersPage() {
   const [setPasswordTarget, setSetPasswordTarget] = useState<UserRow | null>(null);
   const [passwordForm, setPasswordForm] = useState({ password: '', confirm: '' });
   const [activeTab, setActiveTab] = useState<'employees' | 'teams'>('employees');
+  const [listSearch, setListSearch] = useState('');
 
   const canDelete = role === 'ceo' || can('users', 'delete');
   const canResetPassword = role === 'ceo' || can('users', 'manage');
@@ -112,6 +127,17 @@ export function UsersPage() {
     queryKey: ['users'],
     queryFn: async () => (await api.get('/users', { params: { limit: 100 } })).data.data,
   });
+
+  const employees = (data?.items || []) as UserRow[];
+  const filteredEmployees = useMemo(() => {
+    const q = listSearch.trim().toLowerCase();
+    if (!q) return employees;
+    return employees.filter((u) =>
+      [u.name, u.email, u.employeeId, u.phone, u.department, u.designation, u.role]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [employees, listSearch]);
 
   const invite = useMutation({
     mutationFn: async () => {
@@ -255,116 +281,220 @@ export function UsersPage() {
   const profileManageable = profileUser ? canManageTarget(profileUser) : false;
 
   return (
-    <div>
+    <div className="pb-4">
       <PageHeader
-        title={activeTab === 'employees' ? 'Employees' : 'Project Working Teams'}
+        title={activeTab === 'employees' ? 'Employees' : 'Working Teams'}
         description={
           activeTab === 'employees'
             ? 'Add teammates, assign roles, and manage employment details'
-            : 'Assemble cross-functional teams of employees and assign them directly to projects'
+            : 'Assemble teams and assign them to projects'
         }
         actions={
           activeTab === 'employees' ? (
-            <Button onClick={() => setOpen(true)} className="bg-[#0D9488] hover:bg-[#0B7D72] text-white">
-              Add employees
+            <Button
+              onClick={() => setOpen(true)}
+              className="h-10 w-full gap-1.5 sm:h-9 sm:w-auto"
+            >
+              <Plus className="h-4 w-4" />
+              Add employee
             </Button>
           ) : undefined
         }
       />
 
-      {/* Tabs */}
-      <div className="mb-6 flex items-center gap-1 rounded-xl border border-slate-200/80 bg-slate-50/70 p-1 w-fit shadow-2xs">
+      {/* Tabs — full width on mobile */}
+      <div className="mb-4 flex w-full items-center gap-1 rounded-xl border border-slate-200/80 bg-slate-50/80 p-1 shadow-2xs sm:mb-6 sm:w-fit">
         <button
           type="button"
           onClick={() => setActiveTab('employees')}
           className={cn(
-            'flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition',
+            'flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition sm:flex-none sm:px-3.5 sm:py-1.5 sm:text-xs',
             activeTab === 'employees'
               ? 'bg-white text-slate-900 shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           )}
         >
           <User className="h-3.5 w-3.5 text-teal-600" />
-          <span>Employees ({(data?.items || []).length})</span>
+          <span>
+            Employees <span className="text-slate-400">({employees.length})</span>
+          </span>
         </button>
         <button
           type="button"
           onClick={() => setActiveTab('teams')}
           className={cn(
-            'flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition',
+            'flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition sm:flex-none sm:px-3.5 sm:py-1.5 sm:text-xs',
             activeTab === 'teams'
               ? 'bg-white text-slate-900 shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           )}
         >
           <Users className="h-3.5 w-3.5 text-teal-600" />
-          <span>Project Working Teams</span>
+          <span className="sm:hidden">Teams</span>
+          <span className="hidden sm:inline">Project Working Teams</span>
         </button>
       </div>
 
       {activeTab === 'employees' ? (
-        <TableShell>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>ID</th>
-              <th>Role</th>
-              <th>Department</th>
-              <th>Designation</th>
-              <th>Joined</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading &&
-              Array.from({ length: 6 }).map((_, i) => (
-                <tr key={`sk-${i}`}>
-                  {Array.from({ length: 7 }).map((__, j) => (
-                    <td key={j}>
-                      <Skeleton className="h-4 w-full" />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            {!isLoading &&
-              (data?.items || []).map((u: UserRow) => {
-              return (
-                <tr
-                  key={u._id}
-                  onClick={() => setProfileEmployeeId(u._id)}
-                  className="cursor-pointer transition-colors hover:bg-teal-50/40 group"
-                  title="Open employee profile"
-                >
-                  <td>
-                    <div className="flex items-center gap-3">
-                      <UserAvatar name={u.name} className="h-9 w-9 rounded-full text-xs shadow-2xs shrink-0" />
-                      <div>
-                        <div className="font-bold text-slate-900 group-hover:text-teal-700 transition flex items-center gap-1.5">
-                          <span>{u.name}</span>
-                          <span className="text-[10px] text-teal-600 font-normal opacity-0 group-hover:opacity-100 transition">
-                            &bull; Open profile &rarr;
-                          </span>
-                        </div>
-                        <div className="text-xs text-[var(--fg-secondary)]">{u.email}</div>
-                        {u.phone ? <div className="text-xs text-[var(--fg-secondary)]">{u.phone}</div> : null}
-                      </div>
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={listSearch}
+              onChange={(e) => setListSearch(e.target.value)}
+              placeholder="Search name, email, ID, phone…"
+              className="h-11 rounded-xl border-slate-200 bg-white pl-10 text-sm sm:h-10"
+              aria-label="Search employees"
+            />
+          </div>
+
+          {/* Mobile card list */}
+          <div className="space-y-2 md:hidden">
+            {isLoading
+              ? Array.from({ length: 5 }).map((_, i) => (
+                  <div
+                    key={`msk-${i}`}
+                    className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5"
+                  >
+                    <Skeleton className="h-12 w-12 rounded-full" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-3 w-48" />
                     </div>
-                  </td>
-                  <td>{u.employeeId || '—'}</td>
-                  <td className="capitalize">{u.role}</td>
-                  <td>{u.department}</td>
-                  <td>{u.designation || '—'}</td>
-                  <td>{formatDate(u.joiningDate)}</td>
-                  <td>
-                    <Badge tone={statusTone(u.status)}>{u.status}</Badge>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </TableShell>
+                  </div>
+                ))
+              : null}
+
+            {!isLoading && filteredEmployees.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-12 text-center">
+                <User className="mx-auto h-8 w-8 text-slate-300" />
+                <p className="mt-2 text-sm font-semibold text-slate-800">No employees found</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {listSearch ? 'Try a different search.' : 'Add your first teammate to get started.'}
+                </p>
+              </div>
+            ) : null}
+
+            {!isLoading &&
+              filteredEmployees.map((u) => (
+                <button
+                  key={u._id}
+                  type="button"
+                  onClick={() => setProfileEmployeeId(u._id)}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-slate-200/90 bg-white p-3.5 text-left shadow-[var(--shadow-sm)] transition active:scale-[0.99] active:bg-slate-50"
+                >
+                  <UserAvatar
+                    name={u.name}
+                    className="h-12 w-12 shrink-0 rounded-full text-sm shadow-2xs"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-[15px] font-semibold tracking-tight text-slate-900">
+                          {u.name}
+                        </div>
+                        <div className="mt-0.5 truncate text-[12px] text-slate-500">{u.email}</div>
+                      </div>
+                      <Badge tone={statusTone(u.status)} className="shrink-0 capitalize">
+                        {u.status}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                      <span className="inline-flex items-center gap-1 font-semibold text-slate-700">
+                        <IdCard className="h-3 w-3 text-teal-600" />
+                        {u.employeeId || 'No ID'}
+                      </span>
+                      <span className="capitalize">{u.role}</span>
+                      {u.department ? <span>{u.department}</span> : null}
+                      {u.phone ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {u.phone}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                </button>
+              ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block">
+            <TableShell>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>ID</th>
+                    <th>Role</th>
+                    <th>Department</th>
+                    <th>Designation</th>
+                    <th>Joined</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoading &&
+                    Array.from({ length: 6 }).map((_, i) => (
+                      <tr key={`sk-${i}`}>
+                        {Array.from({ length: 7 }).map((__, j) => (
+                          <td key={j}>
+                            <Skeleton className="h-4 w-full" />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  {!isLoading && filteredEmployees.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-sm text-slate-500">
+                        No employees found
+                      </td>
+                    </tr>
+                  ) : null}
+                  {!isLoading &&
+                    filteredEmployees.map((u) => (
+                      <tr
+                        key={u._id}
+                        onClick={() => setProfileEmployeeId(u._id)}
+                        className="group cursor-pointer transition-colors hover:bg-teal-50/40"
+                        title="Open employee profile"
+                      >
+                        <td>
+                          <div className="flex items-center gap-3">
+                            <UserAvatar
+                              name={u.name}
+                              className="h-9 w-9 shrink-0 rounded-full text-xs shadow-2xs"
+                            />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 font-bold text-slate-900 transition group-hover:text-teal-700">
+                                <span className="truncate">{u.name}</span>
+                                <span className="hidden text-[10px] font-normal text-teal-600 opacity-0 transition group-hover:opacity-100 xl:inline">
+                                  · Open profile →
+                                </span>
+                              </div>
+                              <div className="truncate text-xs text-[var(--fg-secondary)]">{u.email}</div>
+                              {u.phone ? (
+                                <div className="text-xs text-[var(--fg-secondary)]">{u.phone}</div>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="font-mono text-xs font-semibold">{u.employeeId || '—'}</td>
+                        <td className="capitalize">{u.role}</td>
+                        <td>{u.department}</td>
+                        <td>{u.designation || '—'}</td>
+                        <td>{formatDate(u.joiningDate)}</td>
+                        <td>
+                          <Badge tone={statusTone(u.status)}>{u.status}</Badge>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </TableShell>
+          </div>
+        </div>
       ) : (
         <WorkingTeamsList canManage={role === 'ceo' || role === 'manager'} />
       )}

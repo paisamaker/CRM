@@ -107,33 +107,13 @@ export function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-50/80 font-sans text-slate-900 lg:grid lg:grid-cols-12">
-      {/* Elegant Ambient Light Color Effect in Background */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        {/* Soft Red / Coral ambient glow (matching Star Media Red) */}
-        <div className="absolute -top-28 -left-20 h-[520px] w-[520px] rounded-full bg-rose-400/20 blur-[130px]" />
-        {/* Soft Indigo / Violet ambient glow */}
-        <div className="absolute top-1/4 -right-28 h-[580px] w-[580px] rounded-full bg-indigo-400/20 blur-[140px]" />
-        {/* Soft Amber / Peach warm glow */}
-        <div className="absolute -bottom-24 left-1/3 h-[520px] w-[520px] rounded-full bg-amber-300/20 blur-[130px]" />
-        {/* Soft Teal light glow */}
-        <div className="absolute bottom-12 left-10 h-[400px] w-[400px] rounded-full bg-teal-400/15 blur-[120px]" />
-        {/* Subtle grid pattern */}
-        <div
-          className="absolute inset-0 opacity-[0.035]"
-          style={{
-            backgroundImage: 'radial-gradient(circle at 1px 1px, #0f172a 1px, transparent 0)',
-            backgroundSize: '32px 32px',
-          }}
-        />
-      </div>
-
-      {/* Left Column: Professional Overview & Showcase (7 cols) */}
-      <div className="relative hidden flex-col justify-between border-r border-slate-200/80 bg-slate-50/60 p-10 backdrop-blur-xl lg:col-span-7 lg:flex xl:p-14">
+    <div className="relative min-h-screen overflow-hidden bg-[#f4f5f7] font-sans text-slate-900 lg:grid lg:grid-cols-12">
+      {/* Left Column */}
+      <div className="relative hidden flex-col justify-between border-r border-slate-200 bg-white p-10 lg:col-span-7 lg:flex xl:p-14">
         {/* Brand Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-slate-200/90 bg-white p-1 shadow-sm">
+            <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white p-1">
               <img
                 src="/images/starmedia_logo.webp"
                 alt="Star Media Logo"
@@ -141,12 +121,12 @@ export function LoginPage() {
               />
             </div>
             <div>
-              <div className="text-base font-bold tracking-tight text-slate-900">STAR MEDIA</div>
-              <p className="text-xs font-medium text-slate-500">Project Management &amp; Company Operations</p>
+              <div className="text-base font-semibold tracking-tight text-slate-900">Star Media</div>
+              <p className="text-xs text-slate-500">Project Management &amp; Operations</p>
             </div>
           </div>
 
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-xs backdrop-blur-sm">
+          <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             <span>Systems Normal</span>
           </div>
@@ -164,7 +144,7 @@ export function LoginPage() {
           </div>
 
           {/* Clean Dashboard Preview */}
-          <div className="mt-8 overflow-hidden rounded-2xl border border-slate-200/90 bg-white/80 p-2.5 shadow-lg shadow-slate-200/50 backdrop-blur-md">
+          <div className="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
             <img
               src="/images/saas_dashboard_hero.jpg"
               alt="Star Media CRM Platform"

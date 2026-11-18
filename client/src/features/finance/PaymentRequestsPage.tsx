@@ -5,7 +5,7 @@ export function PaymentRequestsPage() {
   return (
     <div className="space-y-5 pb-12">
       <header className="overflow-hidden rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-sm)]">
-        <div className="bg-[linear-gradient(120deg,var(--brand-soft)_0%,transparent_45%,var(--orange-soft)_100%)] px-5 py-5 sm:px-6">
+        <div className="px-5 py-5 sm:px-6">
           <div className="flex items-start gap-3">
             <div className="rounded-lg bg-[var(--bg-elevated)] p-2 text-[var(--brand)] border border-[var(--border)]">
               <CreditCard className="h-5 w-5" />

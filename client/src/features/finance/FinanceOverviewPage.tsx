@@ -96,7 +96,7 @@ export function FinanceOverviewPage() {
   return (
     <div className="space-y-5 pb-12">
       <header className="overflow-hidden rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-sm)]">
-        <div className="bg-[linear-gradient(120deg,var(--brand-soft)_0%,transparent_45%,var(--orange-soft)_100%)] px-5 py-5 sm:px-6">
+        <div className="px-5 py-5 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-[var(--fg-secondary)]">

@@ -91,29 +91,43 @@ export function ConversationSidebar({
   );
 
   return (
-    <aside className="flex h-full w-full shrink-0 flex-col border-r border-slate-200 bg-white sm:w-[320px] lg:w-[335px]">
-      {/* Top Header */}
-      <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-4">
+    <aside className="sm-chat-sidebar flex h-full w-full shrink-0 flex-col border-r border-[#e9edef] bg-white md:w-[340px] lg:w-[360px]">
+      {/* WhatsApp-style list header */}
+      <div
+        className="flex items-center justify-between gap-2 bg-[#00a884] px-3 pb-3 pt-3 text-white md:bg-white md:px-4 md:pt-4 md:text-[#111b21]"
+        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+      >
         <div className="flex min-w-0 items-center gap-2">
-          <h2 className="text-[18px] font-bold tracking-tight text-slate-900">Messages</h2>
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+          <h2 className="text-[20px] font-semibold tracking-tight md:text-[18px] md:font-bold">
+            Chats
+          </h2>
+          <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-semibold md:bg-slate-100 md:text-slate-600">
             {conversations.length}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
-            onClick={onOpenDirectory}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-            aria-label="Compose"
-            title="Compose"
+            onClick={onNewGroup}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white/95 transition hover:bg-white/15 md:hidden"
+            aria-label="New group"
+            title="New group"
           >
-            <SquarePen className="h-4 w-4" />
+            <Users className="h-5 w-5" />
           </button>
           <button
             type="button"
             onClick={onOpenDirectory}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#00a389] px-3 text-xs font-semibold text-white shadow-xs transition hover:bg-[#008770]"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white/95 transition hover:bg-white/15 md:h-8 md:w-8 md:rounded-lg md:text-slate-500 md:hover:bg-slate-100 md:hover:text-slate-800"
+            aria-label="New chat"
+            title="New chat"
+          >
+            <SquarePen className="h-5 w-5 md:h-4 md:w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onOpenDirectory}
+            className="hidden h-8 items-center gap-1.5 rounded-lg bg-[#00a884] px-3 text-xs font-semibold text-white shadow-xs transition hover:bg-[#008069] md:inline-flex"
             aria-label="New chat"
           >
             <SquarePen className="h-3.5 w-3.5" />
@@ -123,22 +137,22 @@ export function ConversationSidebar({
       </div>
 
       {/* Search Input */}
-      <div className="px-3 pb-3">
+      <div className="bg-[#00a884] px-3 pb-3 md:bg-transparent md:pb-3">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#54656f] md:h-3.5 md:w-3.5 md:text-slate-400" />
           <input
             id="chat-conv-search"
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search conversations..."
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2 pl-9 pr-8 text-xs text-slate-900 placeholder:text-slate-400 transition focus:border-teal-500 focus:bg-white focus:outline-none"
+            placeholder="Search or start new chat"
+            className="w-full rounded-lg border-0 bg-white py-2.5 pl-10 pr-8 text-[14px] text-[#111b21] placeholder:text-[#667781] shadow-sm transition focus:outline-none focus:ring-2 focus:ring-white/40 md:rounded-xl md:border md:border-slate-200 md:bg-slate-50/80 md:py-2 md:pl-9 md:text-xs md:shadow-none md:focus:border-teal-500 md:focus:bg-white md:focus:ring-0"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#667781] hover:text-[#111b21]"
               aria-label="Clear search"
             >
               <X className="h-3.5 w-3.5" />
@@ -148,7 +162,7 @@ export function ConversationSidebar({
 
         {/* Filter Pills */}
         <div
-          className="mt-2.5 flex items-center gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mt-2.5"
           role="tablist"
         >
           {FILTERS.map(({ key, label }) => {
@@ -162,18 +176,20 @@ export function ConversationSidebar({
                 aria-selected={active}
                 onClick={() => setFilter(key)}
                 className={cn(
-                  'inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-xs transition font-medium',
+                  'inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[12px] font-medium transition md:rounded-md md:px-2.5 md:py-1 md:text-xs',
                   active
-                    ? 'bg-[#00a389] font-semibold text-white shadow-2xs'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    ? 'bg-white text-[#008069] shadow-sm md:bg-[#00a884] md:font-semibold md:text-white'
+                    : 'bg-white/15 text-white hover:bg-white/25 md:bg-transparent md:text-slate-600 md:hover:bg-slate-100 md:hover:text-slate-900'
                 )}
               >
                 {label}
                 {key === 'unread' && count > 0 && (
                   <span
                     className={cn(
-                      'rounded-full px-1 text-[10px] font-bold',
-                      active ? 'bg-white/25 text-white' : 'bg-teal-600 text-white'
+                      'rounded-full px-1.5 text-[10px] font-bold',
+                      active
+                        ? 'bg-[#00a884]/15 text-[#008069] md:bg-white/25 md:text-white'
+                        : 'bg-white text-[#008069] md:bg-teal-600 md:text-white'
                     )}
                   >
                     {count}
@@ -200,7 +216,7 @@ export function ConversationSidebar({
             ))}
           </div>
         ) : filteredConversations.length > 0 ? (
-          <ul className="p-1 space-y-0.5">
+          <ul className="md:space-y-0.5 md:p-1">
             {filteredConversations.map((c) => {
               const isGroup = c.type === 'group';
               const peer = isGroup
@@ -214,15 +230,15 @@ export function ConversationSidebar({
               const isTyping = (typingByConversation?.[c._id] || []).length > 0;
 
               return (
-                <li key={c._id}>
+                <li key={c._id} className="border-b border-[#f0f2f5] md:border-0">
                   <button
                     type="button"
                     onClick={() => onSelect(c._id)}
                     className={cn(
-                      'flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-150',
+                      'flex w-full items-center gap-3 px-3 py-3 text-left transition-colors duration-150 md:items-start md:rounded-xl md:py-2.5',
                       isActive
-                        ? 'bg-[#e6f7f3] text-slate-900 shadow-2xs'
-                        : 'hover:bg-slate-50 text-slate-700'
+                        ? 'bg-[#f0f2f5] text-slate-900 md:bg-[#e6f7f3] md:shadow-2xs'
+                        : 'text-slate-700 active:bg-[#f5f6f6] hover:bg-slate-50'
                     )}
                     aria-current={isActive ? 'true' : undefined}
                   >

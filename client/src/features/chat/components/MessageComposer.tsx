@@ -178,7 +178,10 @@ export function MessageComposer({
   const canSend = (text.trim() || attachments.length > 0) && !isPending && !uploading;
 
   return (
-    <div className="sm-chat-composer shrink-0 px-3 py-2.5 sm:px-4">
+    <div
+      className="sm-chat-composer shrink-0 px-2 py-2 sm:px-4 sm:py-2.5"
+      style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+    >
       {replyTo && (
         <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border-l-4 border-[#00a884] bg-white p-2.5 shadow-2xs">
           <div className="min-w-0">

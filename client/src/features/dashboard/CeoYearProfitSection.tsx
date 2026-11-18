@@ -71,7 +71,7 @@ export function CeoYearProfitSection() {
 
   return (
     <div className="h-full overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] shadow-xs">
-      <div className="border-b border-[var(--border)] bg-[linear-gradient(120deg,var(--teal-soft)_0%,transparent_50%,var(--brand-soft)_100%)] px-5 py-4 sm:px-6">
+      <div className="border-b border-[var(--border)] px-5 py-4 sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-muted)]">

@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   Users,
   PanelRight,
-  Shield,
   Pin,
   BellOff,
   Bell,
@@ -17,7 +16,6 @@ import {
 } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
 import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import type { Conversation } from '../types';
 
@@ -66,8 +64,8 @@ export function ChatHeader({
     : isGroup
       ? `${conversation.members.length} members`
       : peerOnline
-        ? 'Online'
-        : 'Offline';
+        ? 'online'
+        : 'tap here for contact info';
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -86,182 +84,193 @@ export function ChatHeader({
   }, [menuOpen]);
 
   return (
-    <header className="sticky top-0 z-10 flex h-[60px] shrink-0 items-center justify-between gap-3 border-b border-[#e9edef] bg-[#f0f2f5] px-3 sm:px-4">
-      <div className="flex min-w-0 items-center gap-3">
+    <header
+      className="sm-chat-header sticky top-0 z-10 flex h-[56px] shrink-0 items-center justify-between gap-1 border-b border-transparent bg-[#008069] px-1.5 text-white md:h-[60px] md:gap-2 md:border-[#e9edef] md:bg-[#f0f2f5] md:px-4 md:text-[#111b21]"
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-0.5 sm:gap-2">
         {onBack && (
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 md:hidden"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white active:bg-white/15 md:hidden"
             aria-label="Back to conversations"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-5 w-5" strokeWidth={2.25} />
           </button>
         )}
 
         <button
           type="button"
           onClick={onToggleDetails}
-          className="relative shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40"
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-1 text-left active:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 md:active:bg-black/5 md:focus-visible:ring-[#00a884]/40"
           aria-label="Open contact details"
         >
-          {isGroup ? (
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50 text-teal-700 ring-1 ring-teal-100">
-              <Users className="h-5 w-5" />
-            </div>
-          ) : (
-            <UserAvatar
-              name={peer?.name}
-              avatar={peer?.avatar}
-              className="h-10 w-10 rounded-full text-xs"
-            />
-          )}
-          {!isGroup && peerOnline && (
-            <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />
-          )}
-        </button>
-
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="truncate text-[15px] font-bold tracking-tight text-slate-900">
-              {title}
-            </h1>
-            {conversation.pinned && <Pin className="h-3 w-3 shrink-0 text-teal-600" />}
-            {conversation.muted && <BellOff className="h-3 w-3 shrink-0 text-slate-400" />}
-            {!isGroup && peer?.role && (
-              <span className="inline-flex items-center rounded-full border border-blue-400 bg-blue-50/50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-blue-600">
-                {peer.role}
-              </span>
-            )}
-          </div>
-          <p className="flex items-center gap-1.5 truncate text-[11px] text-slate-500">
+          <span className="relative shrink-0">
             {isGroup ? (
-              <span>{conversation.members.length} members</span>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white md:bg-[#dfe5e7] md:text-[#54656f]">
+                <Users className="h-5 w-5" />
+              </div>
             ) : (
-              <>
-                <span
-                  className={cn(
-                    'inline-flex items-center gap-1 font-medium',
-                    peerOnline ? 'text-emerald-600' : 'text-slate-400'
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'h-1.5 w-1.5 rounded-full',
-                      peerOnline ? 'bg-emerald-500' : 'bg-slate-400'
-                    )}
-                  />
-                  {peerOnline ? 'Online' : 'Offline'}
-                </span>
-                {peer?.role && (
-                  <>
-                    <span className="text-slate-300">|</span>
-                    <span className="capitalize">{peer.role}</span>
-                  </>
-                )}
-                {peer?.email && (
-                  <>
-                    <span className="text-slate-300">|</span>
-                    <span className="text-slate-400 truncate">{peer.email}</span>
-                  </>
-                )}
-              </>
+              <UserAvatar
+                name={peer?.name}
+                avatar={peer?.avatar}
+                className="h-10 w-10 rounded-full text-xs"
+              />
             )}
-          </p>
-        </div>
+            {!isGroup && peerOnline && (
+              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[#008069] bg-[#25d366] md:border-[#f0f2f5]" />
+            )}
+          </span>
+
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5">
+              <span className="truncate text-[16px] font-medium leading-tight text-white md:text-[#111b21]">
+                {title}
+              </span>
+              {conversation.pinned && (
+                <Pin className="h-3 w-3 shrink-0 text-white/90 md:text-[#00a884]" />
+              )}
+              {conversation.muted && (
+                <BellOff className="h-3 w-3 shrink-0 text-white/75 md:text-[#667781]" />
+              )}
+            </span>
+            <span
+              className={cn(
+                'block truncate text-[12px] leading-tight',
+                typingLabel
+                  ? 'text-[#d9fdd3] md:text-[#00a884]'
+                  : 'text-white/80 md:text-[#667781]'
+              )}
+            >
+              {statusLine}
+            </span>
+          </span>
+        </button>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 items-center">
         {onSearchMessages && (
           <button
             type="button"
             onClick={onSearchMessages}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition"
+            className="hidden h-10 w-10 items-center justify-center rounded-full text-[#54656f] hover:bg-black/5 sm:inline-flex"
             aria-label="Search messages"
             title="Search"
           >
-            <Search className="h-4 w-4" />
+            <Search className="h-[22px] w-[22px]" />
           </button>
         )}
         <button
           type="button"
           onClick={() => navigate('/meetings')}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-white/15 md:text-[#54656f] md:hover:bg-black/5"
           aria-label="Voice call"
           title="Open Meetings"
         >
-          <Phone className="h-4 w-4" />
+          <Phone className="h-[22px] w-[22px]" />
         </button>
         <button
           type="button"
           onClick={() => navigate('/meetings')}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-white/15 md:text-[#54656f] md:hover:bg-black/5"
           aria-label="Video call"
           title="Start a meeting"
         >
-          <Video className="h-4 w-4" />
+          <Video className="h-[22px] w-[22px]" />
         </button>
 
         <div className="relative" ref={menuRef}>
           <button
             type="button"
             onClick={() => setMenuOpen((p) => !p)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-white/15 md:text-[#54656f] md:hover:bg-black/5"
             aria-label="Conversation options"
             aria-expanded={menuOpen}
           >
-            <MoreVertical className="h-4 w-4" />
+            <MoreVertical className="h-[22px] w-[22px]" />
           </button>
           {menuOpen && (
             <div
               role="menu"
-              className="absolute right-0 z-30 mt-1.5 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-[12px] shadow-lg"
+              className="absolute right-0 z-30 mt-1.5 w-52 overflow-hidden rounded-xl border border-[#e9edef] bg-white py-1 text-[14px] shadow-lg"
             >
+              {onSearchMessages && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-[#111b21] hover:bg-[#f0f2f5] sm:hidden"
+                  onClick={() => {
+                    onSearchMessages();
+                    setMenuOpen(false);
+                  }}
+                >
+                  <Search className="h-4 w-4 text-[#54656f]" />
+                  Search
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-slate-700 hover:bg-slate-50"
+                className="flex w-full items-center gap-3 px-4 py-3 text-[#111b21] hover:bg-[#f0f2f5]"
                 onClick={() => {
                   onTogglePin?.();
                   setMenuOpen(false);
                 }}
               >
-                <Pin className="h-3.5 w-3.5" />
+                <Pin className="h-4 w-4 text-[#54656f]" />
                 {conversation.pinned ? 'Unpin chat' : 'Pin chat'}
               </button>
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-slate-700 hover:bg-slate-50"
+                className="flex w-full items-center gap-3 px-4 py-3 text-[#111b21] hover:bg-[#f0f2f5]"
                 onClick={() => {
                   onToggleMute?.();
                   setMenuOpen(false);
                 }}
               >
-                {conversation.muted ? <Bell className="h-3.5 w-3.5" /> : <BellOff className="h-3.5 w-3.5" />}
+                {conversation.muted ? (
+                  <Bell className="h-4 w-4 text-[#54656f]" />
+                ) : (
+                  <BellOff className="h-4 w-4 text-[#54656f]" />
+                )}
                 {conversation.muted ? 'Unmute' : 'Mute notifications'}
               </button>
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-slate-700 hover:bg-slate-50"
+                className="flex w-full items-center gap-3 px-4 py-3 text-[#111b21] hover:bg-[#f0f2f5]"
                 onClick={() => {
                   onToggleArchive?.();
                   setMenuOpen(false);
                 }}
               >
-                <Archive className="h-3.5 w-3.5" />
+                <Archive className="h-4 w-4 text-[#54656f]" />
                 {conversation.archived ? 'Unarchive' : 'Archive chat'}
               </button>
-              <div className="my-1 border-t border-slate-100" />
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-rose-600 hover:bg-rose-50"
+                className="flex w-full items-center gap-3 px-4 py-3 text-[#111b21] hover:bg-[#f0f2f5] lg:hidden"
+                onClick={() => {
+                  onToggleDetails();
+                  setMenuOpen(false);
+                }}
+              >
+                <PanelRight className="h-4 w-4 text-[#54656f]" />
+                Contact info
+              </button>
+              <div className="my-1 border-t border-[#e9edef]" />
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-3 px-4 py-3 text-[#ea0038] hover:bg-[#f0f2f5]"
                 onClick={async () => {
                   const ok = await confirmDialog({
                     title: 'Hide conversation?',
-                    description: 'This hides the chat from your list. You can still open it again later if needed.',
+                    description:
+                      'This hides the chat from your list. You can still open it again later if needed.',
                     confirmLabel: 'Hide chat',
                     tone: 'warning',
                   });
@@ -269,7 +278,7 @@ export function ChatHeader({
                   setMenuOpen(false);
                 }}
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Trash2 className="h-4 w-4" />
                 Delete for me
               </button>
             </div>
@@ -280,16 +289,16 @@ export function ChatHeader({
           type="button"
           onClick={onToggleDetails}
           className={cn(
-            'ml-0.5 inline-flex h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[12px] font-semibold transition',
+            'ml-0.5 hidden h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[12px] font-semibold transition lg:inline-flex',
             detailsOpen
-              ? 'border-teal-200 bg-teal-50 text-teal-800'
-              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              ? 'border-[#00a884]/40 bg-[#e7f8f3] text-[#008069]'
+              : 'border-[#e9edef] text-[#54656f] hover:bg-black/5'
           )}
           aria-pressed={detailsOpen}
           title="Details"
         >
           <PanelRight className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Details</span>
+          Details
         </button>
       </div>
     </header>

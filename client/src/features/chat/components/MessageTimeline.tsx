@@ -129,14 +129,14 @@ export function MessageTimeline({
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="sm-chat-messages h-full overflow-y-auto overscroll-contain px-3 py-4 sm:px-5 lg:px-8"
+        className="sm-chat-messages h-full overflow-y-auto overscroll-contain px-2 py-3 sm:px-5 sm:py-4 lg:px-8"
       >
         {loadingMore && (
           <div className="mb-3 flex justify-center">
             <Loader2 className="h-4 w-4 animate-spin text-teal-600" aria-label="Loading older messages" />
           </div>
         )}
-        <div className="mx-auto w-full max-w-3xl space-y-0.5 pb-2">
+        <div className="mx-auto w-full max-w-3xl space-y-0.5 pb-2 md:space-y-1">
           {messages.map((message, index) => {
             const isMine = String(message.sender?._id) === String(currentUserId);
             const prevMessage = messages[index - 1];

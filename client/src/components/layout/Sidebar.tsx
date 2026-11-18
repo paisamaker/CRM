@@ -177,46 +177,34 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="relative flex h-full flex-col justify-between overflow-hidden bg-[var(--bg-sidebar)] text-[var(--sidebar-fg)]">
-      {/* Ambient glow */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-        <div className="absolute -top-10 -left-10 h-44 w-44 rounded-full bg-[var(--teal)]/10 blur-2xl" />
-        <div className="absolute top-12 -right-8 h-36 w-36 rounded-full bg-[var(--purple)]/10 blur-2xl" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_color-mix(in_srgb,var(--teal-soft)_70%,transparent),_transparent_70%)]" />
-      </div>
-
-      {/* Top Brand Card */}
-      <div className="relative z-10 p-3 border-b border-[var(--sidebar-border)] bg-[var(--bg-elevated)]/40 backdrop-blur-xs">
+      {/* Brand */}
+      <div className="relative z-10 border-b border-[var(--sidebar-border)] px-3 py-3">
         {!collapsed ? (
-          <div className="flex items-center gap-2.5 rounded-xl bg-[var(--bg-elevated)]/80 p-2 border border-[var(--border)] shadow-2xs backdrop-blur-xs">
-            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[var(--bg-elevated)] p-0.5 shadow-2xs">
+          <div className="flex items-center gap-2.5 px-1">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-[var(--border)] bg-white">
               <img
                 src="/images/starmedia_logo.webp"
-                alt="Star Media Logo"
-                className="h-full w-full object-contain"
+                alt="Star Media"
+                className="h-full w-full object-contain p-0.5"
                 onError={(e) => {
                   (e.currentTarget as HTMLElement).style.display = 'none';
                 }}
               />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="truncate text-xs font-black tracking-tight text-[var(--fg)]">STAR MEDIA</span>
-                <span className="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.2 text-[8.5px] font-bold text-amber-600 dark:text-amber-300 border border-amber-500/30">
-                  PRO
-                </span>
+              <div className="truncate text-[13px] font-semibold tracking-tight text-[var(--fg)]">
+                Star Media
               </div>
-              <div className="truncate text-[10px] font-medium text-[var(--fg-muted)]">
-                Project &amp; Operations CRM
-              </div>
+              <div className="truncate text-[11px] text-[var(--fg-muted)]">CRM</div>
             </div>
           </div>
         ) : (
           <div className="flex justify-center">
-            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--bg-elevated)] p-1 border border-[var(--border)] shadow-2xs">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-[var(--border)] bg-white">
               <img
                 src="/images/starmedia_logo.webp"
-                alt="Star Media Logo"
-                className="h-full w-full object-contain"
+                alt="Star Media"
+                className="h-full w-full object-contain p-0.5"
               />
             </div>
           </div>
@@ -270,17 +258,17 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
                       }}
                       className={({ isActive }) =>
                         cn(
-                          'group relative flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150',
+                          'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors',
                           isActive
-                            ? 'bg-[var(--sidebar-active)] text-white font-semibold shadow-xs shadow-teal-700/20'
-                            : 'text-[var(--sidebar-fg)] hover:bg-[var(--sidebar-bg-hover)] hover:text-[var(--sidebar-fg-hover)] hover:shadow-2xs',
+                            ? 'bg-[var(--sidebar-active)] font-semibold text-white'
+                            : 'text-[var(--sidebar-fg)] hover:bg-[var(--sidebar-bg-hover)] hover:text-[var(--sidebar-fg-hover)]',
                           collapsed && 'justify-center px-0',
-                          hasAlert && !isActive && 'bg-rose-500/5'
+                          hasAlert && !isActive && 'bg-rose-50'
                         )
                       }
                     >
                       <span className="relative shrink-0">
-                        <item.icon className="h-4 w-4 transition-transform group-hover:scale-105" />
+                        <item.icon className="h-4 w-4" />
                         {hasAlert ? (
                           <span
                             className={cn(
@@ -290,9 +278,9 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
                           />
                         ) : null}
                       </span>
-                      {!collapsed ? <span className="truncate flex-1">{item.label}</span> : null}
+                      {!collapsed ? <span className="flex-1 truncate">{item.label}</span> : null}
                       {!collapsed && hasAlert ? (
-                        <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white shadow-xs">
+                        <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-md bg-rose-500 px-1.5 text-[10px] font-semibold text-white">
                           {badgeValue}
                         </span>
                       ) : null}
@@ -305,47 +293,31 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
         })}
       </nav>
 
-      {/* Footer Area: Online Status & User Profile */}
-      <div className="relative z-10 p-3 space-y-2 border-t border-[var(--sidebar-border)] bg-[var(--bg-elevated)]/50 backdrop-blur-xs">
-        {!collapsed ? (
-          <div className="rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] px-3 py-2 shadow-2xs backdrop-blur-xs">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
-              </span>
-              <span className="text-[11px] font-bold text-emerald-500 tracking-tight">Online</span>
-            </div>
-            <p className="mt-0.5 text-[10.5px] text-[var(--fg-muted)]">All services connected</p>
-          </div>
-        ) : (
-          <div className="flex justify-center py-1" title="Online: All services connected">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
-            </span>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between gap-1 pt-1">
-          <div className="flex items-center gap-2.5 min-w-0">
+      {/* Footer */}
+      <div className="relative z-10 space-y-2 border-t border-[var(--sidebar-border)] p-3">
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex min-w-0 items-center gap-2.5">
             <UserAvatar
               name={user?.name || 'User'}
               avatar={user?.avatar}
-              className="h-8 w-8 rounded-full ring-1 ring-[var(--border)] shrink-0 text-xs shadow-2xs"
+              className="h-8 w-8 shrink-0 rounded-full text-xs"
             />
             {!collapsed && (
               <div className="min-w-0 text-left">
-                <div className="truncate text-xs font-bold text-[var(--fg)]">{user?.name || 'User'}</div>
-                <div className="text-[10px] font-medium capitalize text-[var(--fg-muted)]">{user?.role || 'Member'}</div>
+                <div className="truncate text-xs font-semibold text-[var(--fg)]">
+                  {user?.name || 'User'}
+                </div>
+                <div className="text-[11px] capitalize text-[var(--fg-muted)]">
+                  {user?.role || 'Member'}
+                </div>
               </div>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-0.5">
+          <div className="flex shrink-0 items-center">
             <button
               type="button"
               onClick={() => void logout()}
-              className="text-[var(--fg-muted)] hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-500/10 transition"
+              className="rounded-md p-1.5 text-[var(--fg-muted)] transition hover:bg-rose-50 hover:text-rose-600"
               title="Log out"
               aria-label="Log out"
             >
@@ -354,7 +326,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
             <button
               type="button"
               onClick={() => setCollapsed(!collapsed)}
-              className="text-[var(--fg-muted)] hover:text-[var(--fg)] p-1 rounded-lg hover:bg-[var(--sidebar-bg-hover)] transition"
+              className="rounded-md p-1.5 text-[var(--fg-muted)] transition hover:bg-[var(--sidebar-bg-hover)] hover:text-[var(--fg)]"
               title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -376,7 +348,7 @@ export function Sidebar() {
       {/* Desktop */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-[var(--sidebar-border)] bg-[var(--bg-sidebar)] transition-all duration-200 md:flex shadow-[2px_0_16px_-4px_rgba(0,168,132,0.08)]',
+          'fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-[var(--sidebar-border)] bg-[var(--bg-sidebar)] transition-[width] duration-200 md:flex',
           collapsed ? 'w-[72px]' : 'w-[235px]'
         )}
       >
