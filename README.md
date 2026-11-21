@@ -81,6 +81,12 @@ starmediacrm/
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Vercel + Render + MongoDB Atlas + Cloudinary setup, env vars, and post-deploy checks.
 
+## Android app (Capacitor Remote URL)
+
+The Android shell loads `https://www.smcs.digital` live. Frontend deploys update the app without a new APK.
+
+See [docs/ANDROID_CAPACITOR.md](docs/ANDROID_CAPACITOR.md) for sync, APK, signed release, and Play Store AAB steps.
+
 ## Notes
 
 - Google OAuth: set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `.env`

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  HTTPS only. Cleartext (http://) is blocked app-wide.
+  Domains cover the Capacitor remote CRM + Render API used by Axios / Socket.IO.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">smcs.digital</domain>
+        <domain includeSubdomains="false">crm-oceh.onrender.com</domain>
+    </domain-config>
+</network-security-config>

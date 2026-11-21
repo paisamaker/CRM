@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Starmediainfluencer</string>
+    <string name="title_activity_main">Starmediainfluencer</string>
+    <string name="package_name">com.starmediainfluencer.crm</string>
+    <string name="custom_url_scheme">com.starmediainfluencer.crm</string>
+</resources>

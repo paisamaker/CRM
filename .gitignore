@@ -84,3 +84,16 @@ ehthumbs.db
 *.pid
 *.seed
 *.pid.lock
+
+# Android / Capacitor local secrets & build outputs
+client/android/keystore.properties
+client/android/*.keystore
+client/android/*.jks
+client/android/app/build/
+client/android/build/
+client/android/.gradle/
+client/android/local.properties
+client/android/captures/
+*.apk
+*.aab
+*.ap_

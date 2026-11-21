@@ -254,6 +254,7 @@ html {
   font-size: 17px;
   line-height: 1.5;
   -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;
 }
 
 html,
@@ -270,6 +271,8 @@ body {
   color: var(--fg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 /* Clear legibility enhancement (+1px boost for micro-copy) */

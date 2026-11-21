@@ -14,7 +14,9 @@
     "build": "npm run build -w server && npm run build -w client",
     "build:client": "npm run build -w client",
     "start": "npm run start -w server",
-    "lint": "npm run lint -w server && npm run lint -w client"
+    "lint": "npm run lint -w server && npm run lint -w client",
+    "android:sync": "npm run android:sync -w client",
+    "android:open": "npm run android:open -w client"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
